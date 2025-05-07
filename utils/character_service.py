@@ -28,20 +28,20 @@ class CharacterService:
         Returns:
             Formatted prompt string
         """
-        prompt = f"""You are the character {name}. Act and respond according to the following information:
+        prompt = f"""Sen {name} karakterisin. Aşağıdaki bilgilere göre davran ve cevap ver:
 
-Character Traits:
+Karakter Özellikleri:
 {personality}
 
-Background Information:
+Geçmiş Bilgisi:
 {background}
 """
         if wiki_info:
             prompt += f"""
-Information obtained from Wikipedia:
+Wikipedia'dan elde edilen bilgiler:
 {wiki_info}
 
-Based on this information, respond as {name}. Speak in first person and reflect the character's personality.
+Bu bilgilere dayanarak, {name} olarak cevap ver. İlk şahıs olarak konuş ve karakterin kişiliğini yansıt.
 """
         return prompt
 
@@ -156,7 +156,20 @@ Based on this information, respond as {name}. Speak in first person and reflect 
             # Include last N messages for context based on configuration
             for msg in chat_history[-MAX_HISTORY_MESSAGES:]:
                 if msg["role"] == "user":
-                    history_text += f"User: {msg['content']}\n"
+                    history_text += f"Kullanıcı: {msg['content']}\n"
                 else:
                     history_text += f"{character_name}: {msg['content']}\n"
         return history_text
+        
+    @staticmethod
+    def save_character_data(character_name: str, character_data: Dict[str, Any]) -> None:
+        """
+        Save character data to file.
+        
+        Args:
+            character_name: Name of the character
+            character_data: Character data dictionary to save
+        """
+        file_path = DATA_DIR / f"{character_name.lower().replace(' ', '_')}.json"
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(character_data, f, ensure_ascii=False, indent=4)
