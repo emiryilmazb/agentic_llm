@@ -14,13 +14,19 @@ Bu proje, Character.ai benzeri bir karakter chatbot platformuna agentic yapı ve
 - Karakterlere eylemler gerçekleştirme yeteneği
 - Kullanıcı isteklerine göre araçlar kullanma
 - Akıllı yanıtların yanı sıra gerçek eylemleri gerçekleştirme
+- **Dinamik Araç Oluşturma**: İhtiyaç duyulan araçları otomatik olarak oluşturma
 
 ### MCP (Model Context Protocol) Araçları
+#### Yerleşik Araçlar
 - **search_wikipedia**: Wikipedia'da bilgi arama
 - **get_current_time**: Güncel tarih/saat bilgisi alma
 - **get_weather**: Hava durumu bilgisi (demo)
 - **open_website**: Web sitesi açma
 - **calculate_math**: Matematiksel hesaplamalar yapma
+
+#### Dinamik Araçlar
+- **currency_converter**: Döviz kurları ve para birimi dönüşümleri (örnek)
+- *ve daha fazlası*: Sistem, kullanıcı ihtiyaçlarına göre yeni araçlar oluşturabilir
 
 ## Kurulum
 
@@ -61,16 +67,21 @@ Agentic özelliği etkinleştirilmiş bir karakterle şu tür isteklerde bulunab
 - "Saat kaç?"
 - "2+2*3 hesaplar mısın?"
 - "example.com sitesini açar mısın?"
+- "1 dolar kaç TL?" (dinamik araç oluşturma örneği)
+- "Tokyo'da hava durumu nasıl olacak?" (dinamik araç oluşturma örneği)
 
 ## Mimari
 
-Proje üç ana bileşenden oluşur:
+Proje dört ana bileşenden oluşur:
 
 1. **app.py**: Ana Streamlit uygulaması ve kullanıcı arayüzü
 2. **agentic_character.py**: Eylemleri işleyen ve araçları kullanan karakter modülü
 3. **mcp_server.py**: Karakterlerin kullanabileceği araçları sağlayan MCP sunucusu
+4. **dynamic_tool_manager.py**: Dinamik araç oluşturma ve yönetim sistemi
 
 ## Geliştirme
+
+### Manuel Araç Ekleme
 
 Daha fazla araç eklemek için:
 
@@ -92,3 +103,16 @@ class YeniArac(MCPTool):
 
 # Aracı sunucuya kaydedin
 default_server.register_tool(YeniArac())
+```
+
+### Dinamik Araç Oluşturma Sistemi
+
+Sistem, kullanıcı ihtiyaçlarına göre otomatik olarak yeni araçlar oluşturabilir:
+
+1. Kullanıcı, mevcut araçlarla karşılanamayan bir istek gönderir (örn. "1 dolar kaç TL?")
+2. Sistem, bu isteği analiz eder ve yeni bir araç gerektiğini tespit eder
+3. AI modeli kullanılarak yeni aracın kodu otomatik olarak oluşturulur
+4. Oluşturulan araç `dynamic_tools` dizinine kaydedilir ve MCP sunucusuna kaydedilir
+5. Karakter, yeni oluşturulan aracı kullanarak kullanıcının isteğine yanıt verir
+
+Dinamik araç oluşturma sistemi hakkında daha fazla bilgi için `dynamic_tools/README.md` dosyasına bakın.

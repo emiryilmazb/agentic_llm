@@ -115,9 +115,9 @@ Bu bilgilere dayanarak, {name} olarak cevap ver. İlk şahıs olarak konuş ve k
         return characters
 
     @staticmethod
-    def update_chat_history(character_name: str, 
-                          user_message: str, 
-                          character_response: str, 
+    def update_chat_history(character_name: str,
+                          user_message: str,
+                          character_response: str,
                           response_data: Optional[Dict[str, Any]] = None) -> None:
         """
         Update the chat history for a character.
@@ -128,12 +128,15 @@ Bu bilgilere dayanarak, {name} olarak cevap ver. İlk şahıs olarak konuş ve k
             character_response: Character's response
             response_data: Optional additional response data
         """
+        # Agentic modda, sohbet geçmişi zaten get_character_response içinde güncellenmiş ve kaydedilmiştir
+        if response_data:
+            return
+            
+        # Normal modda, sohbet geçmişini manuel olarak güncelle ve kaydet
         character_data = CharacterService.load_character(character_name)
         if character_data:
-            # If not in agentic mode, manually update the chat history
-            if not response_data:
-                character_data["chat_history"].append({"role": "user", "content": user_message})
-                character_data["chat_history"].append({"role": "assistant", "content": character_response})
+            character_data["chat_history"].append({"role": "user", "content": user_message})
+            character_data["chat_history"].append({"role": "assistant", "content": character_response})
             
             file_path = DATA_DIR / f"{character_name.lower().replace(' ', '_')}.json"
             with open(file_path, "w", encoding="utf-8") as f:

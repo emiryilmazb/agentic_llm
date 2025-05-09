@@ -1,7 +1,7 @@
 import json
 import re
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, Tuple
 
 from utils.ai_service import AIService
 from utils.config import (
@@ -12,6 +12,7 @@ from utils.config import (
     MAX_HISTORY_MESSAGES
 )
 from mcp_server import get_default_server
+from utils.dynamic_tool_manager import DynamicToolManager
 
 class AgenticCharacter:
     """An agentic character that can take actions using MCP tools"""
@@ -87,6 +88,16 @@ class AgenticCharacter:
         tools_description += "IMPORTANT: Always use valid JSON format in the args section. Don't forget quotation marks and use escape characters correctly.\n\n"
         tools_description += "If you just want to chat, you can respond normally."
         
+        # Add information about dynamic tool creation
+        tools_description += "\n\nDYNAMIC TOOL CREATION:\n"
+        tools_description += "If you need a tool that doesn't exist yet, you can indicate this in your response. "
+        tools_description += "The system will attempt to create a new tool based on the user's needs. "
+        tools_description += "For example, if the user asks about currency conversion and we don't have a tool for that, "
+        tools_description += "you can respond with something like:\n\n"
+        tools_description += "\"I don't have a tool for currency conversion yet, but I can create one for you. Let me do that...\"\n\n"
+        tools_description += "The system will then try to create a new tool that can handle currency conversion. "
+        tools_description += "Once the tool is created, you'll be informed and can use it like any other tool."
+        
         self.prompt += tools_description
     
     def process_response(self, response: str) -> Dict[str, Any]:
@@ -139,8 +150,99 @@ class AgenticCharacter:
                     # If fixing didn't work, try the original
                     args = json.loads(args_text)
             
+            # Check if the tool exists in the MCP server
+            mcp_server = get_default_server()
+            tools_info = mcp_server.get_tools_info()
+            tool_exists = any(tool["name"] == tool_name for tool in tools_info)
+            
+            # Check if this tool was previously deleted
+            deleted_tools = []
+            deleted_tools_path = Path("dynamic_tools/deleted_tools.json")
+            if deleted_tools_path.exists():
+                try:
+                    with open(deleted_tools_path, "r", encoding="utf-8") as f:
+                        deleted_tools = json.load(f)
+                except json.JSONDecodeError:
+                    deleted_tools = []
+            
+            # If the tool was deleted or doesn't exist, try to create a new one
+            if tool_name in deleted_tools or not tool_exists:
+                print(f"Tool '{tool_name}' not found or was deleted, attempting to create a new one...")
+                
+                # Determine the type of tool needed based on the name and args
+                tool_type = None
+                if "currency" in tool_name.lower() or "exchange" in tool_name.lower() or "döviz" in tool_name.lower():
+                    tool_type = "currency"
+                elif "weather" in tool_name.lower() or "forecast" in tool_name.lower() or "hava" in tool_name.lower():
+                    tool_type = "weather"
+                elif "location" in tool_name.lower() or "konum" in tool_name.lower():
+                    tool_type = "location"
+                
+                # Create a message that would trigger the creation of this type of tool
+                trigger_message = ""
+                if tool_type == "currency":
+                    from_currency = args.get("from_currency", "USD")
+                    to_currency = args.get("to_currency", "TRY")
+                    amount = args.get("amount", 1)
+                    trigger_message = f"What is {amount} {from_currency} in {to_currency}?"
+                elif tool_type == "weather":
+                    location = args.get("location", "Istanbul")
+                    days = args.get("days", 3)
+                    trigger_message = f"What's the weather forecast for {location} for the next {days} days?"
+                elif tool_type == "location":
+                    trigger_message = "What is my current location?"
+                else:
+                    trigger_message = f"I need a tool for {tool_name}"
+                
+                # Try to create the tool
+                success, created_tool_name, _ = DynamicToolManager.create_and_register_tool(trigger_message)
+                
+                if success and created_tool_name:
+                    print(f"Successfully created new tool: {created_tool_name}")
+                    tool_name = created_tool_name
+                else:
+                    return {
+                        "type": "error",
+                        "content": f"The tool '{tool_name}' is not available and could not be created.",
+                        "original_response": response
+                    }
+            
+            # Eğer araç retrieve_first_message ise, sohbet geçmişini aktar
+            if tool_name == "retrieve_first_message":
+                # Önce aracı al
+                tool = self.mcp_server.tools.get(tool_name)
+                if tool and hasattr(tool, "set_conversation_history"):
+                    # Sohbet geçmişini aktar
+                    tool.set_conversation_history(self.chat_history)
+            
             # Execute the tool
             result = self.mcp_server.execute_tool(tool_name, args)
+            
+            # Check if there was an error in the result
+            if "error" in result:
+                print(f"Error executing tool: {result['error']}")
+                
+                # Try to fix common errors
+                if "from_currency" in args and "to_currency" in args:
+                    # Fix currency codes
+                    if args["from_currency"].lower() == "dolar":
+                        args["from_currency"] = "USD"
+                    elif args["from_currency"].lower() == "euro":
+                        args["from_currency"] = "EUR"
+                    
+                    if args["to_currency"].lower() in ["tl", "türk lirası", "lira"]:
+                        args["to_currency"] = "TRY"
+                    
+                    # Eğer araç retrieve_first_message ise, sohbet geçmişini aktar
+                    if tool_name == "retrieve_first_message":
+                        # Önce aracı al
+                        tool = self.mcp_server.tools.get(tool_name)
+                        if tool and hasattr(tool, "set_conversation_history"):
+                            # Sohbet geçmişini aktar
+                            tool.set_conversation_history(self.chat_history)
+                    
+                    # Try again with fixed args
+                    result = self.mcp_server.execute_tool(tool_name, args)
             
             # Remove the action from the response
             clean_response = response.replace(action_match.group(0), "").strip()
@@ -163,6 +265,7 @@ class AgenticCharacter:
             }
         except Exception as e:
             # Other errors
+            print(f"Exception in process_response: {str(e)}")
             return {
                 "type": "error",
                 "content": f"An error occurred while running the tool: {str(e)}",
@@ -173,8 +276,12 @@ class AgenticCharacter:
         """
         Get a response from the character for the given user message
         The response may include actions that are executed using MCP tools
+        If no existing tool can handle the request, a new tool may be dynamically created
         """
         try:
+            # Check if we need to create a new tool for this request
+            created_tool, tool_name, tool_info = self._check_and_create_tool(user_message)
+            
             # Prepare conversation history context
             history_text = ""
             if self.chat_history:
@@ -187,6 +294,54 @@ class AgenticCharacter:
             
             # Create the full prompt for the model
             full_prompt = f"""{self.prompt}
+
+Chat history:
+{history_text}
+
+User: {user_message}
+{self.name}:"""
+
+            # If a new tool was created, add information about it to the prompt
+            # and provide a specific instruction to use it
+            if created_tool and tool_name:
+                # Determine what kind of tool was created and provide specific instructions
+                tool_usage_example = ""
+                if "currency" in tool_name.lower() or "döviz" in tool_name.lower():
+                    tool_usage_example = f"""
+<action>
+  <tool>{tool_name}</tool>
+  <args>{{"from_currency": "USD", "to_currency": "TRY", "amount": 1}}</args>
+  <reason>The user asked about currency conversion between USD and TRY.</reason>
+</action>
+"""
+                elif "weather" in tool_name.lower() or "hava" in tool_name.lower():
+                    tool_usage_example = f"""
+<action>
+  <tool>{tool_name}</tool>
+  <args>{{"location": "Istanbul", "days": 3}}</args>
+  <reason>The user asked about the weather forecast for Istanbul.</reason>
+</action>
+"""
+                
+                elif "location" in tool_name.lower() or "konum" in tool_name.lower():
+                    tool_usage_example = f"""
+<action>
+  <tool>{tool_name}</tool>
+  <args>{{}}</args>
+  <reason>The user asked for their current location.</reason>
+</action>
+"""
+                
+                full_prompt = f"""{self.prompt}
+
+I just created a new tool called "{tool_name}" that can help with this request.
+This tool was created specifically to handle the user's current request.
+I MUST use this tool to provide the most accurate and up-to-date information.
+
+Here's an example of how to use this tool:
+{tool_usage_example}
+
+I should respond with an action using this tool to answer the user's question.
 
 Chat history:
 {history_text}
@@ -243,9 +398,81 @@ User: {user_message}
                     if status == "success":
                         result_info = f"The website {url} has been opened."
                 
+                elif tool_name == "currency_converter":
+                    # Handle currency conversion results
+                    if "error" in action_result:
+                        result_info = f"Error: {action_result['error']}"
+                    else:
+                        from_currency = action_result.get("from_currency", "")
+                        to_currency = action_result.get("to_currency", "")
+                        amount = action_result.get("amount", 1)
+                        rate = action_result.get("rate", 0)
+                        converted_amount = action_result.get("converted_amount", 0)
+                        last_updated = action_result.get("last_updated", "")
+                        
+                        result_info = f"{amount} {from_currency} is equal to {converted_amount:.2f} {to_currency}. "
+                        result_info += f"The exchange rate is 1 {from_currency} = {rate:.4f} {to_currency}. "
+                        if last_updated:
+                            result_info += f"Last updated: {last_updated}."
+                
+                elif tool_name == "weather_forecast":
+                    # Handle weather forecast results
+                    if "error" in action_result:
+                        result_info = f"Error: {action_result['error']}"
+                    else:
+                        location = action_result.get("location", "")
+                        forecast = action_result.get("forecast", [])
+                        units = action_result.get("units", {})
+                        
+                        result_info = f"Weather forecast for {location}:\n\n"
+                        
+                        for day in forecast:
+                            date = day.get("date", "")
+                            max_temp = day.get("max_temp", "")
+                            min_temp = day.get("min_temp", "")
+                            weather = day.get("weather", "")
+                            precipitation = day.get("precipitation", "")
+                            
+                            result_info += f"Date: {date}\n"
+                            result_info += f"Temperature: {min_temp}-{max_temp}{units.get('temperature', '°C')}\n"
+                            result_info += f"Weather: {weather}\n"
+                            result_info += f"Precipitation: {precipitation}{units.get('precipitation', 'mm')}\n\n"
+                
+                elif tool_name == "get_current_location":
+                    if "error" in action_result:
+                        result_info = f"Error: {action_result['error']}"
+                    elif action_result.get("status") == "success" and "location" in action_result:
+                        loc = action_result["location"]
+                        result_info = (
+                            f"I've found a location: {loc.get('city', 'N/A')}, {loc.get('state', 'N/A')}, {loc.get('country', 'N/A')} "
+                            f"(Lat: {loc.get('latitude', 'N/A')}, Lon: {loc.get('longitude', 'N/A')}). "
+                            "Please note that this is a placeholder location as I cannot access your real-time GPS data for privacy reasons."
+                        )
+                    else:
+                        result_info = "I couldn't determine the location information from the tool's response."
+                
                 # For any other tools or as a fallback
                 else:
-                    result_info = json.dumps(action_result, ensure_ascii=False)
+                    # Try to extract meaningful information from the result
+                    if isinstance(action_result, dict):
+                        # Filter out error messages
+                        if "error" in action_result:
+                            result_info = f"Error: {action_result['error']}"
+                        else:
+                            # Try to create a readable summary
+                            readable_parts = []
+                            for key, value in action_result.items():
+                                if key not in ["status", "message", "error"]: # Exclude common status keys
+                                    readable_parts.append(f"{key.replace('_', ' ').title()}: {value}")
+                            
+                            if readable_parts:
+                                result_info = ". ".join(readable_parts)
+                                if not result_info: # If all keys were status keys
+                                     result_info = json.dumps(action_result, ensure_ascii=False, indent=2)
+                            else: # Should not happen if action_result is not empty and not an error
+                                result_info = json.dumps(action_result, ensure_ascii=False, indent=2)
+                    else: # If action_result is not a dict (e.g. a string or number)
+                        result_info = str(action_result)
                 
                 # Now create a second prompt to get the character to respond in their own style
                 character_context = f"""
@@ -312,6 +539,89 @@ User: {user_message}
                 "content": error_message,
                 "display_text": error_message
             }
+    
+    def _check_and_create_tool(self, user_message: str) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+        """
+        Check if a new tool needs to be created for the user's message and create it if needed.
+        
+        Args:
+            user_message: The user's message
+            
+        Returns:
+            Tuple of (success, tool_name, tool_info)
+        """
+        try:
+            # Check for deleted tools to avoid recreating them with the same name
+            deleted_tools = []
+            deleted_tools_path = Path("dynamic_tools/deleted_tools.json")
+            if deleted_tools_path.exists():
+                try:
+                    with open(deleted_tools_path, "r", encoding="utf-8") as f:
+                        deleted_tools = json.load(f)
+                except json.JSONDecodeError:
+                    deleted_tools = []
+            
+            # Extract key information from the user message to help with tool creation
+            message_lower = user_message.lower()
+            
+            # Currency conversion patterns
+            currency_patterns = {
+                "from_currency": ["dolar", "dollar", "usd", "euro", "eur", "pound", "gbp", "yen", "jpy"],
+                "to_currency": ["tl", "türk lirası", "lira", "try"]
+            }
+            
+            # Weather forecast patterns
+            weather_patterns = {
+                "location": ["istanbul", "ankara", "izmir", "tokyo", "new york", "london", "paris"],
+                "days": ["bugün", "yarın", "hafta", "week", "gün", "day"]
+            }
+            
+            # Check if the message contains currency conversion request
+            if any(term in message_lower for term in ["dolar", "euro", "tl", "kur", "döviz", "para birimi", "currency", "exchange"]):
+                # Extract potential currency information to help with tool creation
+                extracted_info = {"type": "currency"}
+                for currency in currency_patterns["from_currency"]:
+                    if currency in message_lower:
+                        extracted_info["from_currency"] = currency.upper()
+                        if currency == "dolar" or currency == "dollar":
+                            extracted_info["from_currency"] = "USD"
+                        break
+                
+                for currency in currency_patterns["to_currency"]:
+                    if currency in message_lower:
+                        extracted_info["to_currency"] = currency.upper()
+                        if currency == "tl" or "lira" in currency:
+                            extracted_info["to_currency"] = "TRY"
+                        break
+                
+                # Use the DynamicToolManager to create and register a currency tool
+                success, tool_name, tool_info = DynamicToolManager.create_and_register_tool(user_message)
+                
+                # If successful, return the result
+                if success and tool_name:
+                    return success, tool_name, tool_info
+            
+            # Check if the message contains weather forecast request
+            elif any(term in message_lower for term in ["hava", "weather", "forecast", "sıcaklık", "temperature"]):
+                # Extract potential location information to help with tool creation
+                extracted_info = {"type": "weather"}
+                for location in weather_patterns["location"]:
+                    if location in message_lower:
+                        extracted_info["location"] = location
+                        break
+                
+                # Use the DynamicToolManager to create and register a weather tool
+                success, tool_name, tool_info = DynamicToolManager.create_and_register_tool(user_message)
+                
+                # If successful, return the result
+                if success and tool_name:
+                    return success, tool_name, tool_info
+            
+            # For other types of requests, use the general approach
+            return DynamicToolManager.create_and_register_tool(user_message)
+        except Exception as e:
+            print(f"Error checking and creating tool: {str(e)}")
+            return False, None, None
     
     def save(self, data_dir: Path) -> Path:
         """Save the character data to a JSON file"""

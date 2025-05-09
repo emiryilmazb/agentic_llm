@@ -44,6 +44,9 @@ def get_character_response(character_data, user_message, use_agentic=False):
             character_data["chat_history"] = character.chat_history
             character_data["prompt"] = character.prompt
             
+            # Güncellenmiş karakter verilerini hemen kaydet
+            CharacterService.save_character_data(character_data["name"], character_data)
+            
             # Cevabı dönüştür
             return response["display_text"], response
         else:
@@ -97,6 +100,63 @@ def update_character_history(character_name, user_message, character_response, r
         response_data
     )
 
+def delete_dynamic_tool(tool_name):
+    """
+    Dinamik bir aracı sil
+    
+    Args:
+        tool_name: Silinecek aracın adı
+    
+    Returns:
+        bool: Silme işlemi başarılı ise True, değilse False
+    """
+    try:
+        # MCP sunucusundan aracı kaldır
+        mcp_server = get_default_server()
+        success = mcp_server.unregister_tool(tool_name)
+        
+        if success:
+            # Araç dosyasını bul ve sil
+            tool_filename = ''.join(['_' + c.lower() if c.isupper() else c for c in tool_name]).lstrip('_')
+            if not tool_filename.endswith('_tool'):
+                tool_filename += '_tool'
+            
+            tool_path = Path(f"dynamic_tools/{tool_filename}.py")
+            module_name = f"dynamic_tools.{tool_filename}"
+            
+            # Python'un sys.modules önbelleğinden modülü kaldır
+            import sys
+            if module_name in sys.modules:
+                del sys.modules[module_name]
+                print(f"Removed module from sys.modules: {module_name}")
+            
+            # Silinen araçları takip etmek için bir dosya oluştur veya güncelle
+            deleted_tools_path = Path("dynamic_tools/deleted_tools.json")
+            deleted_tools = []
+            
+            if deleted_tools_path.exists():
+                try:
+                    with open(deleted_tools_path, "r", encoding="utf-8") as f:
+                        deleted_tools = json.load(f)
+                except json.JSONDecodeError:
+                    deleted_tools = []
+            
+            if tool_name not in deleted_tools:
+                deleted_tools.append(tool_name)
+                
+            with open(deleted_tools_path, "w", encoding="utf-8") as f:
+                json.dump(deleted_tools, f, ensure_ascii=False, indent=4)
+            
+            if tool_path.exists():
+                tool_path.unlink()  # Dosyayı sil
+                print(f"Deleted tool file: {tool_path}")
+            
+            return True
+        return False
+    except Exception as e:
+        print(f"Error deleting tool: {str(e)}")
+        return False
+
 def main():
     st.set_page_config(page_title=APPLICATION_TITLE, page_icon=APPLICATION_ICON, layout="wide")
     
@@ -118,8 +178,37 @@ def main():
         with st.expander("🛠️ Kullanılabilir Araçlar"):
             mcp_server = get_default_server()
             tools_info = mcp_server.get_tools_info()
+            
+            # Yerleşik araçlar ve dinamik araçları ayır
+            built_in_tools = []
+            dynamic_tools = []
+            
             for tool in tools_info:
+                if tool['name'] in ['search_wikipedia', 'get_current_time', 'get_weather', 'open_website', 'calculate_math']:
+                    built_in_tools.append(tool)
+                else:
+                    dynamic_tools.append(tool)
+            
+            # Yerleşik araçları göster
+            st.subheader("Yerleşik Araçlar")
+            for tool in built_in_tools:
                 st.markdown(f"**{tool['name']}**: {tool['description']}")
+            
+            # Dinamik araçları göster (varsa)
+            if dynamic_tools:
+                st.subheader("Dinamik Oluşturulan Araçlar")
+                for tool in dynamic_tools:
+                    col1, col2 = st.columns([5, 1])
+                    with col1:
+                        st.markdown(f"**{tool['name']}**: {tool['description']}")
+                    with col2:
+                        if st.button("🗑️ Sil", key=f"delete_{tool['name']}"):
+                            if delete_dynamic_tool(tool['name']):
+                                st.success(f"{tool['name']} aracı başarıyla silindi!")
+                                st.rerun()  # Sayfayı yenile
+                            else:
+                                st.error(f"{tool['name']} aracı silinirken bir hata oluştu.")
+                st.info("Dinamik araçlar, kullanıcı ihtiyaçlarına göre otomatik olarak oluşturulur.")
         
         if selected_option == "Var olan karakterle konuşun":
             if characters:
