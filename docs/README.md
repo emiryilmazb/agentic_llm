@@ -1,6 +1,6 @@
-# Agentic LLM
+# Agentic Character.ai Clone
 
-An advanced Character.ai-like chatbot platform with agentic capabilities and Model Context Protocol (MCP) features.
+This project is an advanced version of a Character.ai-like chatbot platform with agentic capabilities and Model Context Protocol (MCP) features.
 
 ## Features
 
@@ -20,55 +20,19 @@ An advanced Character.ai-like chatbot platform with agentic capabilities and Mod
 #### Built-in Tools
 - **search_wikipedia**: Search Wikipedia for information
 - **get_current_time**: Get current date/time information
-- **get_weather**: Get weather information
+- **get_weather**: Get weather information (demo)
 - **open_website**: Open websites
 - **calculate_math**: Perform mathematical calculations
 
 #### Dynamic Tools
-- **currency_converter**: Currency exchange rates and conversions
-- **weather_forecast**: Weather forecasts for specific locations
+- **currency_converter**: Currency exchange rates and conversions (example)
 - *and more*: The system can create new tools based on user needs
-
-## Project Structure
-
-The project follows a modular structure:
-
-```
-agentic_llm/
-├── src/
-│   ├── core/           # Core functionality
-│   │   ├── agentic_character.py
-│   │   ├── mcp_server.py
-│   ├── api/            # API services
-│   │   ├── ai_service.py
-│   │   ├── wiki_service.py
-│   ├── tools/          # Tool implementations
-│   │   ├── base.py
-│   │   ├── builtin/    # Built-in tools
-│   │   ├── dynamic/    # Dynamically created tools
-│   ├── utils/          # Utility functions
-│   │   ├── config.py
-│   │   ├── character_service.py
-│   ├── web/            # Web interface
-│   │   ├── app.py
-│   │   ├── components/ # UI components
-├── tests/              # Test suite
-│   ├── unit/           # Unit tests
-│   ├── integration/    # Integration tests
-├── data/               # Data storage
-│   ├── character_data/ # Character data files
-├── docs/               # Documentation
-├── main.py             # Application entry point
-├── setup.py            # Package configuration
-├── requirements.txt    # Dependencies
-├── .env.example        # Environment variables template
-```
 
 ## Installation
 
 1. Clone the repository:
 ```
-git clone https://github.com/yourusername/agentic_llm.git
+git clone https://github.com/emiryilmazb/agentic_llm.git
 cd agentic_llm
 ```
 
@@ -115,6 +79,30 @@ Agentic-enabled characters can respond to requests like:
 - "What's 1 USD in Turkish Lira?" (dynamic tool creation example)
 - "What's the weather forecast for Tokyo?" (dynamic tool creation example)
 
+## Architecture
+
+The project consists of several key components:
+
+1. **Core Modules**:
+   - `agentic_character.py`: Handles character actions and tool usage
+   - `mcp_server.py`: Provides tools for characters to use
+
+2. **API Services**:
+   - `ai_service.py`: Interfaces with the Gemini AI API
+   - `wiki_service.py`: Handles Wikipedia interactions
+
+3. **Tool System**:
+   - `tools/base.py`: Base classes for all tools
+   - `tools/builtin/`: Built-in tool implementations
+   - `tools/dynamic/`: Dynamically created tools
+
+4. **Web Interface**:
+   - `web/app.py`: Streamlit web application
+
+5. **Utilities**:
+   - `utils/config.py`: Configuration management
+   - `utils/character_service.py`: Character data operations
+
 ## Development
 
 ### Adding New Tools
@@ -128,7 +116,6 @@ To add a new built-in tool:
 
 ```python
 from src.tools.base import MCPTool
-from typing import Dict, Any
 
 class NewTool(MCPTool):
     def __init__(self):
@@ -137,37 +124,20 @@ class NewTool(MCPTool):
             description="Description of what your tool does"
         )
     
-    def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, args):
         # Implement tool functionality
         return {"result": "operation result"}
 ```
 
-### Running Tests
+### Dynamic Tool Creation System
 
-Run the tests using pytest:
+The system can automatically create new tools based on user needs:
 
-```
-pytest
-```
-
-Or run specific test files:
-
-```
-pytest tests/unit/test_character_service.py
-pytest tests/integration/test_mcp_tools.py
-```
-
-### Environment Variables
-
-The application uses the following environment variables:
-
-- `GEMINI_API_KEY`: Google Gemini API key
-- `DEFAULT_MODEL`: Default AI model to use (default: "gemini-2.0-flash")
-- `DEFAULT_TEMPERATURE`: Temperature parameter for AI responses (default: 0.7)
-- `DEFAULT_MAX_TOKENS`: Maximum tokens for AI responses (default: 800)
-- `DEFAULT_TOP_P`: Top-p parameter for AI responses (default: 0.95)
-- `ENABLE_DYNAMIC_TOOLS`: Enable/disable dynamic tool creation (default: true)
-- `SANDBOX_DYNAMIC_TOOLS`: Enable/disable sandboxing for dynamic tools (default: false)
+1. User sends a request that requires a tool not currently available
+2. System analyzes the request and determines what kind of tool is needed
+3. AI model generates code for the new tool
+4. Generated tool is saved to the `src/tools/dynamic/` directory and registered with the MCP server
+5. Character uses the new tool to respond to the user's request
 
 ## Security Considerations
 
@@ -183,10 +153,6 @@ In a production environment, additional safeguards should be implemented:
 2. Rate limiting
 3. API key management
 4. Resource usage monitoring
-
-## Contributing
-
-See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines on how to contribute to this project.
 
 ## License
 
