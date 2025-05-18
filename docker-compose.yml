@@ -1,0 +1,28 @@
+version: '3'
+
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - ENV=development
+    command: python run.py
+
+  frontend:
+    build:
+      context: ./frontend/chatbot-ui
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/chatbot-ui:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_API_URL=http://localhost:8000
+    command: npm start
