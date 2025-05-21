@@ -37,7 +37,7 @@ const CharacterCard = ({ character }) => {
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  const isSelected = selectedCharacter?.id === character.id;
+  const isSelected = selectedCharacter?.id === character?.id;
 
   const handleMenuOpen = (event) => {
     event.stopPropagation();
@@ -51,7 +51,9 @@ const CharacterCard = ({ character }) => {
   const handleEditClick = (event) => {
     event.stopPropagation();
     handleMenuClose();
-    navigate(`/characters/edit/${character.id}`);
+    if (character?.id) {
+      navigate(`/characters/edit/${character.id}`);
+    }
   };
 
   const handleDeleteClick = (event) => {
@@ -65,7 +67,9 @@ const CharacterCard = ({ character }) => {
   };
 
   const handleDeleteConfirm = async () => {
-    await deleteCharacter(character.id);
+    if (character?.id) {
+      await deleteCharacter(character.id);
+    }
     setDeleteDialogOpen(false);
   };
 
@@ -89,17 +93,17 @@ const CharacterCard = ({ character }) => {
         <Box className="p-4 pb-2 flex items-center justify-between">
           <Box className="flex items-center">
             <Avatar
-              src={character.avatar}
-              alt={character.name}
+              src={character?.avatar || ''}
+              alt={character?.name || 'Character'}
               className="mr-3"
               sx={{ width: 56, height: 56 }}
             />
             <Box>
               <Typography variant="h6" className="font-semibold">
-                {character.name}
+                {character?.name || 'Unnamed Character'}
               </Typography>
               <Typography variant="caption" className="text-gray-500">
-                {character.personality}
+                {character?.personality || 'No personality defined'}
               </Typography>
             </Box>
           </Box>
@@ -116,7 +120,7 @@ const CharacterCard = ({ character }) => {
 
         <CardContent>
           <Typography variant="body2" className="text-gray-700 line-clamp-3">
-            {character.description}
+            {character?.description || 'No description available'}
           </Typography>
         </CardContent>
 
@@ -136,13 +140,13 @@ const CharacterCard = ({ character }) => {
             </Button>
           )}
           <Typography variant="caption" className="text-gray-500">
-            Created: {new Date(character.createdAt).toLocaleDateString()}
+            Created: {character?.createdAt ? new Date(character.createdAt).toLocaleDateString() : 'Unknown date'}
           </Typography>
         </CardActions>
 
         {/* Character menu */}
         <Menu
-          id={`character-menu-${character.id}`}
+          id={`character-menu-${character?.id || 'unknown'}`}
           anchorEl={menuAnchorEl}
           keepMounted
           open={Boolean(menuAnchorEl)}
@@ -169,7 +173,7 @@ const CharacterCard = ({ character }) => {
           </DialogTitle>
           <DialogContent>
             <DialogContentText>
-              Are you sure you want to delete the character "{character.name}"?
+              Are you sure you want to delete the character "{character?.name || 'Unnamed Character'}"?
               This action cannot be undone.
             </DialogContentText>
           </DialogContent>

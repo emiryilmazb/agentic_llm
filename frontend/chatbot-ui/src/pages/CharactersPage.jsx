@@ -28,13 +28,17 @@ const CharactersPage = () => {
 
   // Filter characters when search term or character list changes
   useEffect(() => {
-    if (characters) {
+    if (characters && Array.isArray(characters)) {
       const filtered = characters.filter(
         (character) =>
-          character.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          character.description.toLowerCase().includes(searchTerm.toLowerCase())
+          character && 
+          ((character.name && character.name.toLowerCase().includes(searchTerm.toLowerCase())) || 
+           (character.description && character.description.toLowerCase().includes(searchTerm.toLowerCase())))
       );
       setFilteredCharacters(filtered);
+    } else {
+      // Ensure filteredCharacters is always an array
+      setFilteredCharacters([]);
     }
   }, [searchTerm, characters]);
 
@@ -108,7 +112,7 @@ const CharactersPage = () => {
       ) : filteredCharacters.length > 0 ? (
         <Grid container spacing={3}>
           {filteredCharacters.map((character) => (
-            <Grid item xs={12} sm={6} md={4} key={character.id}>
+            <Grid item xs={12} sm={6} md={4} key={character?.id || `character-${Math.random()}`}>
               <CharacterCard character={character} />
             </Grid>
           ))}

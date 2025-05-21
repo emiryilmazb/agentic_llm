@@ -26,7 +26,24 @@ export const CharacterProvider = ({ children }) => {
       const response = await axios.get("/api/v1/characters/");
       const charactersData = response.data;
 
-      setCharacters(charactersData);
+      // API'den gelen veri yapısını kontrol et ve her zaman bir dizi olarak ayarla
+      if (Array.isArray(charactersData)) {
+        setCharacters(charactersData);
+      } else if (charactersData && typeof charactersData === 'object') {
+        // Eğer API bir nesne döndürüyorsa ve içinde characters dizisi varsa
+        if (Array.isArray(charactersData.characters)) {
+          setCharacters(charactersData.characters);
+        } else {
+          // Nesneyi bir diziye dönüştür veya boş dizi kullan
+          const characterArray = Object.values(charactersData).filter(item =>
+            item && typeof item === 'object' && 'name' in item
+          );
+          setCharacters(characterArray.length > 0 ? characterArray : []);
+        }
+      } else {
+        // Hiçbir şey bulunamazsa boş dizi kullan
+        setCharacters([]);
+      }
 
       // Eğer henüz bir karakter seçilmemişse, ilkini seç
       if (!selectedCharacter && charactersData.length > 0) {
