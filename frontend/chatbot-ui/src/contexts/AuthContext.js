@@ -8,7 +8,7 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-  // API base URL ayarı
+  // API base URL ayarı - Backend API'ye erişim için
   axios.defaults.baseURL = "http://localhost:8000";
 
   // Kullanıcı kimlik doğrulama olmadan doğrudan erişim sağlanacak

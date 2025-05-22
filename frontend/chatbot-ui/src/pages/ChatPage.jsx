@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Box, Paper, Typography, Snackbar, Alert } from "@mui/material";
+import { Box, Snackbar, Alert } from "@mui/material";
 import { useChat } from "../contexts/ChatContext";
 import { useCharacter } from "../contexts/CharacterContext";
 

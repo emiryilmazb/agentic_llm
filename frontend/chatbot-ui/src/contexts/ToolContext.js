@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+} from "react";
 import axios from "axios";
 
 const ToolContext = createContext(null);
@@ -11,21 +17,56 @@ export const ToolProvider = ({ children }) => {
   const [tools, setTools] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const fetchedRef = useRef(false);
 
   // Uygulama başladığında araçları getir
   useEffect(() => {
-    fetchTools();
-  }, []);
+    // Sadece bir kez çağrılmasını sağla (Strict Mode'da bile)
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      fetchTools();
+    }
+  }, []); // Boş bağımlılık dizisi, sadece bileşen ilk render edildiğinde çalışır
 
   const fetchTools = async () => {
     try {
+      console.log("fetchTools çağrıldı");
       setLoading(true);
       setError("");
 
       const response = await axios.get("/api/v1/tools/");
       const toolsData = response.data;
 
-      setTools(toolsData);
+      console.log("Tools API yanıtı:", toolsData);
+
+      // API yanıt yapısını kontrol et
+      if (toolsData && typeof toolsData === "object") {
+        // API yanıt yapısına göre araçları birleştir
+        const allTools = [
+          ...(toolsData.built_in_tools || []),
+          ...(toolsData.dynamic_tools || []),
+        ];
+
+        console.log("Birleştirilmiş araçlar:", allTools);
+
+        // Araçların geçerli olduğundan emin ol
+        const validTools = allTools.filter(
+          (tool) => tool && typeof tool === "object"
+        );
+        console.log("Geçerli araçlar:", validTools);
+
+        setTools(validTools);
+      } else if (Array.isArray(toolsData)) {
+        // Eğer doğrudan bir dizi dönerse
+        console.log("Araçlar doğrudan dizi olarak alındı:", toolsData);
+        const validTools = toolsData.filter(
+          (tool) => tool && typeof tool === "object"
+        );
+        setTools(validTools);
+      } else {
+        console.log("API yanıtı beklenen formatta değil:", toolsData);
+        setTools([]);
+      }
     } catch (err) {
       console.error("Araçlar getirilirken hata oluştu:", err);
       setError("Araçlar yüklenemedi. Lütfen daha sonra tekrar deneyin.");
@@ -38,7 +79,9 @@ export const ToolProvider = ({ children }) => {
     try {
       setError("");
 
-      const response = await axios.get(`/api/v1/tools/${toolName}`);
+      const response = await axios.get(
+        `/api/v1/tools/${encodeURIComponent(toolName)}`
+      );
       const toolDetails = response.data;
 
       return toolDetails;
@@ -53,7 +96,7 @@ export const ToolProvider = ({ children }) => {
     try {
       setError("");
 
-      await axios.delete(`/api/v1/tools/${toolName}`);
+      await axios.delete(`/api/v1/tools/${encodeURIComponent(toolName)}`);
 
       // Araç listesinden silinen aracı kaldır
       setTools((prev) => prev.filter((tool) => tool.name !== toolName));
@@ -66,74 +109,8 @@ export const ToolProvider = ({ children }) => {
     }
   };
 
-  const executeTool = async (id, params) => {
-    try {
-      setError("");
-
-      // Find the tool
-      const tool = tools.find((t) => t.id === id);
-      if (!tool) {
-        throw new Error("Tool not found");
-      }
-
-      // In a real implementation, this would call the API
-      // const response = await axios.post(`${tool.endpoint}`, params);
-      // return response.data;
-
-      // Mock execution until API endpoints are provided
-      // This is a simple simulation - in real app we'd call the actual backend
-      if (tool.name === "Weather Tool") {
-        return {
-          success: true,
-          data: {
-            location: params.location,
-            temperature: Math.floor(Math.random() * 30) + 5,
-            condition: ["Sunny", "Cloudy", "Rainy", "Windy"][
-              Math.floor(Math.random() * 4)
-            ],
-            humidity: Math.floor(Math.random() * 100),
-            units: params.units || "metric",
-          },
-        };
-      } else if (tool.name === "Search Tool") {
-        return {
-          success: true,
-          data: {
-            query: params.query,
-            results: [
-              {
-                title: "Result 1 for " + params.query,
-                url: "https://example.com/1",
-              },
-              {
-                title: "Result 2 for " + params.query,
-                url: "https://example.com/2",
-              },
-              {
-                title: "Result 3 for " + params.query,
-                url: "https://example.com/3",
-              },
-            ].slice(0, params.limit || 5),
-          },
-        };
-      } else {
-        return {
-          success: true,
-          data: {
-            message: `Mock execution for tool: ${tool.name}`,
-            params: params,
-          },
-        };
-      }
-    } catch (err) {
-      console.error("Failed to execute tool:", err);
-      setError(`Failed to execute tool: ${err.message}`);
-      return {
-        success: false,
-        error: err.message,
-      };
-    }
-  };
+  // Not: API kılavuzunda araç çalıştırma için doğrudan bir endpoint bulunmamaktadır.
+  // Araçlar, sohbet API'si üzerinden kullanılmaktadır.
 
   const value = {
     tools,
@@ -142,7 +119,6 @@ export const ToolProvider = ({ children }) => {
     fetchTools,
     getToolDetails,
     deleteTool,
-    executeTool,
   };
 
   return <ToolContext.Provider value={value}>{children}</ToolContext.Provider>;

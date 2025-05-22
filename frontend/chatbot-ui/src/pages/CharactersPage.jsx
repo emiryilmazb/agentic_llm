@@ -21,22 +21,26 @@ import { useCharacter } from "../contexts/CharacterContext";
 import CharacterCard from "../components/characters/CharacterCard";
 
 const CharactersPage = () => {
-  const { characters, loading, error, fetchCharacters } = useCharacter();
+  const { characters, loading, error } = useCharacter();
   const [searchTerm, setSearchTerm] = useState("");
   const [filteredCharacters, setFilteredCharacters] = useState([]);
   const [showError, setShowError] = useState(false);
 
   // Filter characters when search term or character list changes
   useEffect(() => {
+    console.log("CharactersPage - characters değişti:", characters);
+    
     if (characters && Array.isArray(characters)) {
       const filtered = characters.filter(
         (character) =>
-          character && 
-          ((character.name && character.name.toLowerCase().includes(searchTerm.toLowerCase())) || 
+          character &&
+          ((character.name && character.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
            (character.description && character.description.toLowerCase().includes(searchTerm.toLowerCase())))
       );
+      console.log("Filtrelenmiş karakterler:", filtered);
       setFilteredCharacters(filtered);
     } else {
+      console.log("Characters dizisi geçerli bir dizi değil:", characters);
       // Ensure filteredCharacters is always an array
       setFilteredCharacters([]);
     }

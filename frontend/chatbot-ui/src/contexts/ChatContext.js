@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from "react";
 import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
 import { useCharacter } from "./CharacterContext";
@@ -12,7 +19,8 @@ export const useChat = () => {
 
 export const ChatProvider = ({ children }) => {
   const { selectedCharacter } = useCharacter();
-  const { tools, executeTool } = useTool();
+  // eslint-disable-next-line no-unused-vars
+  const { tools } = useTool();
 
   const [conversations, setConversations] = useState([]);
   const [activeConversation, setActiveConversation] = useState(null);
@@ -20,17 +28,62 @@ export const ChatProvider = ({ children }) => {
   const [isTyping, setIsTyping] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const fetchedCharactersRef = useRef({});
+
+  // Konuşmaları getir fonksiyonu
+  const fetchConversations = useCallback(
+    async (characterName) => {
+      try {
+        setLoading(true);
+        setError("");
+
+        console.log("fetchConversations çağrıldı:", characterName);
+
+        // API kılavuzuna göre sorgu parametrelerini ayarla
+        const response = await axios.get(
+          `/api/v1/conversations/?character_name=${encodeURIComponent(
+            characterName
+          )}&limit=100`
+        );
+        console.log("API yanıtı:", response.data);
+        const conversationsData = response.data.conversations || [];
+
+        console.log("Alınan konuşmalar:", conversationsData);
+
+        setConversations(conversationsData);
+
+        // Eğer konuşma varsa ilk konuşmayı aktif olarak ayarla
+        if (conversationsData.length > 0 && !activeConversation) {
+          console.log(
+            "İlk konuşma aktif olarak ayarlanıyor:",
+            conversationsData[0]
+          );
+          setActiveConversation(conversationsData[0]);
+        }
+      } catch (err) {
+        console.error("Konuşmalar getirilirken hata oluştu:", err);
+        setError("Konuşmalar yüklenemedi. Lütfen daha sonra tekrar deneyin.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [] // activeConversation bağımlılığını kaldırdık
+  );
 
   // Seçili karakter değiştiğinde konuşmaları getir
   useEffect(() => {
     if (selectedCharacter) {
-      fetchConversations(selectedCharacter.name);
+      // Bu karakter için daha önce istek yapılmadıysa yap
+      if (!fetchedCharactersRef.current[selectedCharacter.name]) {
+        fetchedCharactersRef.current[selectedCharacter.name] = true;
+        fetchConversations(selectedCharacter.name);
+      }
     } else {
       setConversations([]);
       setActiveConversation(null);
       setMessages([]);
     }
-  }, [selectedCharacter]);
+  }, [selectedCharacter]); // fetchConversations bağımlılığını kaldırdık
 
   // Aktif konuşma değiştiğinde mesajları getir
   useEffect(() => {
@@ -41,40 +94,6 @@ export const ChatProvider = ({ children }) => {
     }
   }, [activeConversation]);
 
-  // Belirli bir karakter için konuşmaları getir
-  const fetchConversations = async (characterName) => {
-    try {
-      setLoading(true);
-      setError("");
-
-      console.log("fetchConversations çağrıldı:", characterName);
-
-      const response = await axios.get(
-        `/api/v1/conversations/?character_name=${characterName}`
-      );
-      console.log("API yanıtı:", response.data);
-      const conversationsData = response.data.conversations;
-
-      console.log("Alınan konuşmalar:", conversationsData);
-
-      setConversations(conversationsData);
-
-      // Eğer konuşma varsa ilk konuşmayı aktif olarak ayarla
-      if (conversationsData.length > 0 && !activeConversation) {
-        console.log(
-          "İlk konuşma aktif olarak ayarlanıyor:",
-          conversationsData[0]
-        );
-        setActiveConversation(conversationsData[0]);
-      }
-    } catch (err) {
-      console.error("Konuşmalar getirilirken hata oluştu:", err);
-      setError("Konuşmalar yüklenemedi. Lütfen daha sonra tekrar deneyin.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Bir konuşmanın mesaj geçmişini getir
   const fetchMessages = async (conversationId) => {
     try {
@@ -83,15 +102,24 @@ export const ChatProvider = ({ children }) => {
 
       console.log("fetchMessages çağrıldı:", conversationId);
 
+      // API kılavuzuna göre konuşma geçmişini al
       const response = await axios.get(
-        `/api/v1/chat/${conversationId}/history`
+        `/api/v1/chat/${conversationId}/history?limit=1000`
       );
       console.log("Mesaj geçmişi API yanıtı:", response.data);
       const messagesData = response.data.history || [];
 
       console.log("Alınan mesajlar:", messagesData);
 
-      setMessages(messagesData);
+      // Mesajları UI için uygun formata dönüştür
+      const formattedMessages = messagesData.map((msg, index) => ({
+        id: index.toString(), // Backend ID dönmüyorsa index kullan
+        role: msg.role,
+        content: msg.content,
+        timestamp: new Date().toISOString(), // Backend timestamp dönmüyorsa şu anki zamanı kullan
+      }));
+
+      setMessages(formattedMessages);
     } catch (err) {
       console.error("Mesaj geçmişi getirilirken hata oluştu:", err);
       setError("Mesaj geçmişi yüklenemedi. Lütfen daha sonra tekrar deneyin.");
@@ -114,6 +142,7 @@ export const ChatProvider = ({ children }) => {
 
       console.log("Seçili karakter:", selectedCharacter);
 
+      // API kılavuzuna göre yeni konuşma oluştur
       const response = await axios.post("/api/v1/conversations/", {
         character_name: selectedCharacter.name,
         title: title,
@@ -151,6 +180,7 @@ export const ChatProvider = ({ children }) => {
     try {
       setError("");
 
+      // API kılavuzuna göre konuşmayı sil
       await axios.delete(`/api/v1/conversations/${conversationId}`);
 
       // Konuşmayı listeden kaldır
@@ -184,9 +214,16 @@ export const ChatProvider = ({ children }) => {
     try {
       setError("");
 
-      await axios.patch(`/api/v1/conversations/${conversationId}`, {
-        title: newTitle,
-      });
+      // API kılavuzuna göre konuşma başlığını güncelle
+      // eslint-disable-next-line no-unused-vars
+      const response = await axios.patch(
+        `/api/v1/conversations/${conversationId}`,
+        {
+          title: newTitle,
+        }
+      );
+
+      // const updatedConversation = response.data;
 
       // Konuşma başlığını güncelle
       setConversations((prev) =>
@@ -213,7 +250,10 @@ export const ChatProvider = ({ children }) => {
     try {
       setError("");
 
+      // API kılavuzuna göre konuşma geçmişini temizle
       await axios.delete(`/api/v1/conversations/${conversationId}/history`);
+
+      // Mesajları temizle
       setMessages([]);
 
       return true;
@@ -271,83 +311,128 @@ export const ChatProvider = ({ children }) => {
       // Placeholder'ı UI'a ekle
       setMessages((prev) => [...prev, aiMessagePlaceholder]);
 
-      // EventSource ile streaming bağlantısı kur
-      const eventSource = new EventSource(
-        `/api/v1/chat/${
-          activeConversation.id
-        }/stream?message=${encodeURIComponent(
-          content
-        )}&attachments=${encodeURIComponent(JSON.stringify(attachments))}`
-      );
+      try {
+        // API kılavuzuna göre streaming yanıt için POST isteği
+        const response = await fetch(
+          `/api/v1/chat/${activeConversation.id}/stream`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ message: content }),
+          }
+        );
 
-      let receivedContent = "";
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let receivedContent = "";
 
-      eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        console.log("EventSource mesajı:", data);
+        // Yanıtı parça parça oku
+        const readChunk = async () => {
+          try {
+            const { done, value } = await reader.read();
 
-        if (data.type === "stream") {
-          receivedContent += data.content;
-          // UI'daki placeholder mesajı güncelle
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === aiMessagePlaceholder.id
-                ? { ...msg, content: receivedContent }
-                : msg
-            )
-          );
-        } else if (data.type === "tool_code") {
-          // Araç kodu geldiğinde, bunu mesaj içeriğine ekleyebilir veya ayrı bir şekilde gösterebilirsiniz.
-          // Şimdilik mesaj içeriğine ekleyelim.
-          receivedContent += `\n\`\`\`tool_code\n${data.content}\n\`\`\``;
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === aiMessagePlaceholder.id
-                ? { ...msg, content: receivedContent }
-                : msg
-            )
-          );
-        } else if (data.type === "tool_output") {
-          // Araç çıktısı geldiğinde, bunu mesaj içeriğine ekleyebilir veya ayrı bir şekilde gösterebilirsiniz.
-          // Şimdilik mesaj içeriğine ekleyelim.
-          receivedContent += `\n\`\`\`tool_output\n${data.content}\n\`\`\``;
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === aiMessagePlaceholder.id
-                ? { ...msg, content: receivedContent }
-                : msg
-            )
-          );
-        } else if (data.type === "end") {
-          // Akış tamamlandı
-          console.log("Akış tamamlandı.");
-          setIsTyping(false);
-          eventSource.close();
+            if (done) {
+              console.log("Akış tamamlandı.");
+              setIsTyping(false);
 
-          // Konuşma listesini güncelle (son mesaj zamanı)
-          setConversations((prev) => {
-            const updatedConversations = prev.map((conv) =>
-              conv.id === activeConversation.id
-                ? { ...conv, lastMessageTimestamp: new Date().toISOString() }
-                : conv
-            );
-            console.log("Güncellenmiş konuşmalar:", updatedConversations);
-            return updatedConversations;
-          });
-        }
-      };
+              // Konuşma listesini güncelle (son mesaj zamanı)
+              setConversations((prev) => {
+                const updatedConversations = prev.map((conv) =>
+                  conv.id === activeConversation.id
+                    ? { ...conv, updated_at: new Date().toISOString() }
+                    : conv
+                );
+                console.log("Güncellenmiş konuşmalar:", updatedConversations);
+                return updatedConversations;
+              });
 
-      eventSource.onerror = (err) => {
-        console.error("EventSource hatası:", err);
-        setError("Mesaj alınırken bir hata oluştu.");
+              return;
+            }
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split("\n\n");
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = line.substring(6);
+
+                if (data === "[DONE]") {
+                  console.log("Akış tamamlandı.");
+                  setIsTyping(false);
+                  return;
+                }
+
+                try {
+                  // Veriyi JSON olarak ayrıştırmaya çalış
+                  const parsedData = JSON.parse(data);
+
+                  if (parsedData.message) {
+                    const newContent = receivedContent + parsedData.message;
+                    receivedContent = newContent;
+                    // UI'daki placeholder mesajı güncelle
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === aiMessagePlaceholder.id
+                          ? { ...msg, content: newContent }
+                          : msg
+                      )
+                    );
+                  } else if (parsedData.data) {
+                    // Agentic yanıtlar için
+                    const dataContent = parsedData.data.content || "";
+                    const displayText = parsedData.data.display_text || "";
+
+                    const newContent =
+                      receivedContent +
+                      `\n\`\`\`${parsedData.data.type}\n${dataContent}\n\`\`\`\n${displayText}`;
+                    receivedContent = newContent;
+
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === aiMessagePlaceholder.id
+                          ? { ...msg, content: newContent }
+                          : msg
+                      )
+                    );
+                  }
+                } catch (e) {
+                  // JSON ayrıştırma hatası, düz metin olarak ekle
+                  const newContent = receivedContent + data;
+                  receivedContent = newContent;
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === aiMessagePlaceholder.id
+                        ? { ...msg, content: newContent }
+                        : msg
+                    )
+                  );
+                }
+              }
+            }
+
+            // Bir sonraki parçayı oku
+            return readChunk();
+          } catch (error) {
+            console.error("Streaming okuma hatası:", error);
+            setError("Mesaj alınırken bir hata oluştu.");
+            setIsTyping(false);
+          }
+        };
+
+        // Okuma işlemini başlat
+        readChunk();
+      } catch (error) {
+        console.error("Fetch hatası:", error);
+        setError("Mesaj gönderilemedi.");
         setIsTyping(false);
-        eventSource.close();
-      };
 
-      // EventSource bağlantısı açıldığında
-      eventSource.onopen = () => {
-        console.log("EventSource bağlantısı açıldı.");
-      };
+        // Hata durumunda placeholder mesajı kaldır
+        setMessages((prev) =>
+          prev.filter((msg) => msg.id !== aiMessagePlaceholder.id)
+        );
+      }
     } catch (err) {
       console.error("Mesaj gönderilirken hata oluştu:", err);
       setError("Mesaj gönderilemedi. Lütfen tekrar deneyin.");

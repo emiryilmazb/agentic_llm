@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { Box, Typography, Avatar, CircularProgress } from "@mui/material";
+import { Box, Typography, Avatar } from "@mui/material";
 import { Person as PersonIcon } from "@mui/icons-material";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -72,84 +72,98 @@ const MessageList = () => {
               {message.role === "user" ? (
                 <Typography>{message.content}</Typography>
               ) : (
-                <ReactMarkdown
-                  className="prose prose-sm max-w-none"
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    code({ node, inline, className, children, ...props }) {
-                      const match = /language-(\w+)/.exec(className || "");
-                      return !inline && match ? (
-                        <SyntaxHighlighter
-                          style={atomDark}
-                          language={match[1]}
-                          PreTag="div"
-                          {...props}
-                        >
-                          {String(children).replace(/\n$/, "")}
-                        </SyntaxHighlighter>
-                      ) : (
-                        <code className={className} {...props}>
-                          {children}
-                        </code>
-                      );
-                    },
-                    p: ({ node, ...props }) => (
-                      <p className="mb-2 last:mb-0" {...props} />
-                    ),
-                    ul: ({ node, ...props }) => (
-                      <ul className="list-disc pl-5 mb-2" {...props} />
-                    ),
-                    ol: ({ node, ...props }) => (
-                      <ol className="list-decimal pl-5 mb-2" {...props} />
-                    ),
-                    li: ({ node, ...props }) => (
-                      <li className="mb-1" {...props} />
-                    ),
-                    a: ({ node, ...props }) => (
-                      <a className="text-blue-600 hover:underline" {...props} />
-                    ),
-                    h1: ({ node, ...props }) => (
-                      <h1 className="text-xl font-bold my-4" {...props} />
-                    ),
-                    h2: ({ node, ...props }) => (
-                      <h2 className="text-lg font-bold my-3" {...props} />
-                    ),
-                    h3: ({ node, ...props }) => (
-                      <h3 className="text-md font-bold my-2" {...props} />
-                    ),
-                    blockquote: ({ node, ...props }) => (
-                      <blockquote
-                        className="border-l-4 border-gray-300 pl-4 py-1 my-2 text-gray-700 italic"
-                        {...props}
-                      />
-                    ),
-                    table: ({ node, ...props }) => (
-                      <div className="overflow-x-auto my-4">
-                        <table
-                          className="border-collapse border border-gray-300 min-w-full"
+                <>
+                  <ReactMarkdown
+                    className="prose prose-sm max-w-none"
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      code({ node, inline, className, children, ...props }) {
+                        const match = /language-(\w+)/.exec(className || "");
+                        return !inline && match ? (
+                          <SyntaxHighlighter
+                            style={atomDark}
+                            language={match[1]}
+                            PreTag="div"
+                            {...props}
+                          >
+                            {String(children).replace(/\n$/, "")}
+                          </SyntaxHighlighter>
+                        ) : (
+                          <code className={className} {...props}>
+                            {children}
+                          </code>
+                        );
+                      },
+                      p: ({ node, ...props }) => (
+                        <p className="mb-2 last:mb-0" {...props} />
+                      ),
+                      ul: ({ node, ...props }) => (
+                        <ul className="list-disc pl-5 mb-2" {...props} />
+                      ),
+                      ol: ({ node, ...props }) => (
+                        <ol className="list-decimal pl-5 mb-2" {...props} />
+                      ),
+                      li: ({ node, ...props }) => (
+                        <li className="mb-1" {...props} />
+                      ),
+                      a: ({ node, children, ...props }) => (
+                        <a className="text-blue-600 hover:underline" {...props}>{children}</a>
+                      ),
+                      h1: ({ node, children, ...props }) => (
+                        <h1 className="text-xl font-bold my-4" {...props}>{children}</h1>
+                      ),
+                      h2: ({ node, children, ...props }) => (
+                        <h2 className="text-lg font-bold my-3" {...props}>{children}</h2>
+                      ),
+                      h3: ({ node, children, ...props }) => (
+                        <h3 className="text-md font-bold my-2" {...props}>{children}</h3>
+                      ),
+                      blockquote: ({ node, ...props }) => (
+                        <blockquote
+                          className="border-l-4 border-gray-300 pl-4 py-1 my-2 text-gray-700 italic"
                           {...props}
                         />
-                      </div>
-                    ),
-                    th: ({ node, ...props }) => (
-                      <th
-                        className="border border-gray-300 px-4 py-2 bg-gray-100 font-medium"
-                        {...props}
-                      />
-                    ),
-                    td: ({ node, ...props }) => (
-                      <td
-                        className="border border-gray-300 px-4 py-2"
-                        {...props}
-                      />
-                    ),
-                    hr: ({ node, ...props }) => (
-                      <hr className="my-4 border-t border-gray-300" {...props} />
-                    ),
-                  }}
-                >
-                  {message.content}
-                </ReactMarkdown>
+                      ),
+                      table: ({ node, ...props }) => (
+                        <div className="overflow-x-auto my-4">
+                          <table
+                            className="border-collapse border border-gray-300 min-w-full"
+                            {...props}
+                          />
+                        </div>
+                      ),
+                      th: ({ node, ...props }) => (
+                        <th
+                          className="border border-gray-300 px-4 py-2 bg-gray-100 font-medium"
+                          {...props}
+                        />
+                      ),
+                      td: ({ node, ...props }) => (
+                        <td
+                          className="border border-gray-300 px-4 py-2"
+                          {...props}
+                        />
+                      ),
+                      hr: ({ node, ...props }) => (
+                        <hr className="my-4 border-t border-gray-300" {...props} />
+                      ),
+                    }}
+                  >
+                    {message.content}
+                  </ReactMarkdown>
+                  
+                  {message.data && (
+                    <Box className="mt-2 p-2 bg-gray-100 rounded-md">
+                      {/* Agentic yanıtlar için ek veri gösterimi */}
+                      <Typography variant="caption" className="font-semibold">
+                        {message.data.type}
+                      </Typography>
+                      <Typography variant="body2">
+                        {message.data.display_text}
+                      </Typography>
+                    </Box>
+                  )}
+                </>
               )}
 
               <Typography

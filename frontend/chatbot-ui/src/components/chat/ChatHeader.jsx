@@ -4,7 +4,6 @@ import {
   Typography,
   IconButton,
   Avatar,
-  Divider,
   Menu,
   MenuItem,
   Tooltip,

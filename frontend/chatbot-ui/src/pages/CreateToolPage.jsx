@@ -27,7 +27,6 @@ import {
   DragIndicator as DragIndicatorIcon,
 } from "@mui/icons-material";
 import { useNavigate, useParams } from "react-router-dom";
-import { motion } from "framer-motion";
 import { useTool } from "../contexts/ToolContext";
 
 const PARAMETER_TYPES = ["string", "number", "boolean", "object", "array"];
@@ -36,7 +35,7 @@ const ICON_OPTIONS = ["build", "cloud", "search", "weather"];
 const CreateToolPage = () => {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { tools, createTool, updateTool, error, loading } = useTool();
+  const { tools, createTool, updateTool, error } = useTool();
 
   const [formData, setFormData] = useState({
     name: "",

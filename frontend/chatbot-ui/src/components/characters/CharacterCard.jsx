@@ -38,6 +38,12 @@ const CharacterCard = ({ character }) => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const isSelected = selectedCharacter?.id === character?.id;
+  
+  // Karakter verisi yoksa veya geçersizse, boş bir kart gösterme
+  if (!character || typeof character !== 'object') {
+    console.log("Geçersiz karakter verisi:", character);
+    return null;
+  }
 
   const handleMenuOpen = (event) => {
     event.stopPropagation();
@@ -67,13 +73,15 @@ const CharacterCard = ({ character }) => {
   };
 
   const handleDeleteConfirm = async () => {
-    if (character?.id) {
-      await deleteCharacter(character.id);
+    if (character?.name) {
+      // API kılavuzuna göre karakter silme işlemi name parametresi ile yapılıyor
+      await deleteCharacter(character.name);
     }
     setDeleteDialogOpen(false);
   };
 
   const handleSelectCharacter = () => {
+    // Karakter seçme işlemi
     selectCharacter(character);
   };
 

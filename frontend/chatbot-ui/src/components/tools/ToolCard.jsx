@@ -45,6 +45,12 @@ const ToolCard = ({ tool }) => {
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [infoDialogOpen, setInfoDialogOpen] = useState(false);
+  
+  // Araç verisi yoksa veya geçersizse, boş bir kart gösterme
+  if (!tool || typeof tool !== 'object') {
+    console.log("Geçersiz araç verisi:", tool);
+    return null;
+  }
 
   const handleMenuOpen = (event) => {
     event.stopPropagation();
@@ -72,7 +78,9 @@ const ToolCard = ({ tool }) => {
   };
 
   const handleDeleteConfirm = async () => {
-    await deleteTool(tool.id);
+    if (tool?.id) {
+      await deleteTool(tool.id);
+    }
     setDeleteDialogOpen(false);
   };
 
@@ -111,11 +119,11 @@ const ToolCard = ({ tool }) => {
             </Box>
             <Box>
               <Typography variant="h6" className="font-semibold">
-                {tool.name}
+                {tool?.name || 'Unnamed Tool'}
               </Typography>
               <Chip
-                label={`${tool.parameters.length} ${
-                  tool.parameters.length === 1 ? "Parameter" : "Parameters"
+                label={`${tool?.parameters?.length || 0} ${
+                  (tool?.parameters?.length || 0) === 1 ? "Parameter" : "Parameters"
                 }`}
                 size="small"
                 className="bg-gray-100 text-gray-700"
@@ -135,7 +143,7 @@ const ToolCard = ({ tool }) => {
 
         <CardContent>
           <Typography variant="body2" className="text-gray-700 line-clamp-3">
-            {tool.description}
+            {tool?.description || 'No description available'}
           </Typography>
         </CardContent>
 
@@ -151,13 +159,13 @@ const ToolCard = ({ tool }) => {
             </Button>
           </Tooltip>
           <Typography variant="caption" className="text-gray-500">
-            Endpoint: {tool.endpoint.split('/').pop()}
+            Endpoint: {tool?.endpoint ? tool.endpoint.split('/').pop() : 'N/A'}
           </Typography>
         </CardActions>
 
         {/* Tool menu */}
         <Menu
-          id={`tool-menu-${tool.id}`}
+          id={`tool-menu-${tool?.id || 'unknown'}`}
           anchorEl={menuAnchorEl}
           keepMounted
           open={Boolean(menuAnchorEl)}
@@ -182,7 +190,7 @@ const ToolCard = ({ tool }) => {
           <DialogTitle id="delete-dialog-title">Delete Tool</DialogTitle>
           <DialogContent>
             <DialogContentText>
-              Are you sure you want to delete the tool "{tool.name}"? This
+              Are you sure you want to delete the tool "{tool?.name || 'Unnamed Tool'}"? This
               action cannot be undone.
             </DialogContentText>
           </DialogContent>
@@ -208,16 +216,16 @@ const ToolCard = ({ tool }) => {
           maxWidth="sm"
           fullWidth
         >
-          <DialogTitle id="info-dialog-title">{tool.name}</DialogTitle>
+          <DialogTitle id="info-dialog-title">{tool?.name || 'Unnamed Tool'}</DialogTitle>
           <DialogContent>
             <Typography variant="body1" className="mb-4">
-              {tool.description}
+              {tool?.description || 'No description available'}
             </Typography>
 
             <Typography variant="subtitle1" className="font-semibold mt-4 mb-2">
               Parameters:
             </Typography>
-            {tool.parameters.length === 0 ? (
+            {!tool?.parameters || tool.parameters.length === 0 ? (
               <Typography variant="body2" className="text-gray-500 italic">
                 No parameters required
               </Typography>
@@ -256,7 +264,7 @@ const ToolCard = ({ tool }) => {
               Endpoint:
             </Typography>
             <Typography variant="body2" className="text-gray-700 font-mono p-2 bg-gray-50 rounded">
-              {tool.endpoint}
+              {tool?.endpoint || 'N/A'}
             </Typography>
           </DialogContent>
           <DialogActions>

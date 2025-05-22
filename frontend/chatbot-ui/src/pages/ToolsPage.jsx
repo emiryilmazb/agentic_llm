@@ -21,20 +21,27 @@ import { useTool } from "../contexts/ToolContext";
 import ToolCard from "../components/tools/ToolCard";
 
 const ToolsPage = () => {
-  const { tools, loading, error, fetchTools } = useTool();
+  const { tools, loading, error } = useTool();
   const [searchTerm, setSearchTerm] = useState("");
   const [filteredTools, setFilteredTools] = useState([]);
   const [showError, setShowError] = useState(false);
 
   // Filter tools when search term or tool list changes
   useEffect(() => {
-    if (tools) {
+    console.log("ToolsPage - tools değişti:", tools);
+    
+    if (tools && Array.isArray(tools)) {
       const filtered = tools.filter(
         (tool) =>
-          tool.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          tool.description.toLowerCase().includes(searchTerm.toLowerCase())
+          tool &&
+          ((tool.name && tool.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+           (tool.description && tool.description.toLowerCase().includes(searchTerm.toLowerCase())))
       );
+      console.log("Filtrelenmiş araçlar:", filtered);
       setFilteredTools(filtered);
+    } else {
+      console.log("Tools dizisi geçerli bir dizi değil:", tools);
+      setFilteredTools([]);
     }
   }, [searchTerm, tools]);
 
@@ -108,7 +115,7 @@ const ToolsPage = () => {
       ) : filteredTools.length > 0 ? (
         <Grid container spacing={3}>
           {filteredTools.map((tool) => (
-            <Grid item xs={12} sm={6} md={4} key={tool.id}>
+            <Grid item xs={12} sm={6} md={4} key={tool?.id || `tool-${Math.random()}`}>
               <ToolCard tool={tool} />
             </Grid>
           ))}

@@ -18,7 +18,6 @@ import {
   Add as AddIcon,
 } from "@mui/icons-material";
 import { useNavigate, useParams } from "react-router-dom";
-import { motion } from "framer-motion";
 import { useCharacter } from "../contexts/CharacterContext";
 
 const CreateCharacterPage = () => {
@@ -27,17 +26,19 @@ const CreateCharacterPage = () => {
   const {
     characters,
     createCharacter,
-    updateCharacter,
+    // updateCharacter, // Kullanılmadığı için yorum satırına alındı
+    deleteCharacter,
     error,
-    loading,
   } = useCharacter();
 
   const [formData, setFormData] = useState({
     name: "",
     avatar: "",
-    description: "",
+    description: "", // API'de background olarak kullanılacak
     personality: "",
-    systemPrompt: "",
+    systemPrompt: "", // API'de prompt olarak kullanılacak
+    use_wiki: true,
+    use_agentic: true
   });
   const [formErrors, setFormErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -110,14 +111,25 @@ const CreateCharacterPage = () => {
 
     setIsSubmitting(true);
     try {
+      // API'nin beklediği formata dönüştür
+      const apiCharacterData = {
+        name: formData.name,
+        personality: formData.personality,
+        background: formData.description,
+        use_wiki: formData.use_wiki,
+        use_agentic: formData.use_agentic
+      };
+
       if (id) {
-        // Update existing character
-        await updateCharacter(id, formData);
-        setSuccessMessage("Character updated successfully!");
+        // Update existing character - API'de güncelleme endpoint'i belirtilmemiş
+        // Şimdilik mevcut silip yeniden oluşturma yaklaşımı kullanılabilir
+        await deleteCharacter(formData.name);
+        await createCharacter(apiCharacterData);
+        setSuccessMessage("Karakter başarıyla güncellendi!");
       } else {
         // Create new character
-        await createCharacter(formData);
-        setSuccessMessage("Character created successfully!");
+        await createCharacter(apiCharacterData);
+        setSuccessMessage("Karakter başarıyla oluşturuldu!");
       }
       setShowSuccess(true);
       setTimeout(() => {
@@ -230,6 +242,50 @@ const CreateCharacterPage = () => {
                 helperText={formErrors.description}
                 placeholder="Describe what this character specializes in and how it can help users"
               />
+              
+              <Box className="mt-4">
+                <Typography variant="subtitle2" className="mb-2">
+                  Özellikler
+                </Typography>
+                <Box className="flex flex-col gap-2">
+                  <Box className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="use_wiki"
+                      name="use_wiki"
+                      checked={formData.use_wiki}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          use_wiki: e.target.checked
+                        }))
+                      }
+                      className="mr-2"
+                    />
+                    <label htmlFor="use_wiki">
+                      Wikipedia'dan bilgi al
+                    </label>
+                  </Box>
+                  <Box className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="use_agentic"
+                      name="use_agentic"
+                      checked={formData.use_agentic}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          use_agentic: e.target.checked
+                        }))
+                      }
+                      className="mr-2"
+                    />
+                    <label htmlFor="use_agentic">
+                      Agentic özellikleri etkinleştir
+                    </label>
+                  </Box>
+                </Box>
+              </Box>
             </Grid>
 
             {/* Character System Prompt */}

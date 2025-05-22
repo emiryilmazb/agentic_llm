@@ -6,7 +6,6 @@ import {
   Tooltip,
   Menu,
   MenuItem,
-  Divider,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -17,7 +16,6 @@ import {
 import {
   Send as SendIcon,
   AttachFile as AttachFileIcon,
-  EmojiEmotions as EmojiIcon,
   Code as CodeIcon,
   Build as BuildIcon,
   MoreVert as MoreVertIcon,
@@ -41,6 +39,7 @@ const ChatInput = () => {
   const handleSendMessage = (e) => {
     e?.preventDefault();
     if (message.trim() || attachments.length > 0) {
+      // API kılavuzuna göre mesaj gönderme
       sendMessage(message, attachments);
       setMessage("");
       setAttachments([]);
@@ -104,7 +103,9 @@ const ChatInput = () => {
       .map(([key, value]) => `${key}: ${value}`)
       .join(", ");
     
-    const toolMessage = `use ${selectedTool.name} with parameters ${paramText}`;
+    // API kılavuzuna göre araç kullanımı doğrudan sohbet API'si üzerinden yapılıyor
+    // Bu nedenle kullanıcıya araç kullanımını bir mesaj olarak gösteriyoruz
+    const toolMessage = `Araç kullanımı: ${selectedTool.name}\nParametreler: ${paramText}`;
     setMessage(toolMessage);
     setToolDialogOpen(false);
     // Don't send immediately, let the user review and edit if needed

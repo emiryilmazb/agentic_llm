@@ -71,6 +71,7 @@ const ConversationList = () => {
   const handleDelete = async () => {
     if (selectedConversationId) {
       console.log("Konuşma siliniyor:", selectedConversationId);
+      // API kılavuzuna göre konuşma silme
       await deleteConversation(selectedConversationId);
       handleMenuClose();
     }
@@ -91,6 +92,7 @@ const ConversationList = () => {
     e.preventDefault();
     if (selectedConversationId && newTitle.trim()) {
       console.log("Konuşma yeniden adlandırılıyor:", selectedConversationId, newTitle.trim());
+      // API kılavuzuna göre konuşma başlığını güncelleme
       await renameConversation(selectedConversationId, newTitle.trim());
       setIsRenaming(false);
       setSelectedConversationId(null);
@@ -133,6 +135,7 @@ const ConversationList = () => {
           startIcon={<AddIcon />}
           onClick={() => {
             console.log("Yeni Konuşma butonu tıklandı");
+            // API kılavuzuna göre yeni konuşma oluşturma
             createConversation("Yeni Konuşma");
           }}
           disabled={!selectedCharacter || loading}
@@ -280,6 +283,7 @@ const ConversationList = () => {
           onClick={() => {
             if (selectedConversationId) {
               console.log("Konuşma temizleniyor:", selectedConversationId);
+              // API kılavuzuna göre konuşma geçmişini temizleme
               clearConversation(selectedConversationId);
               handleMenuClose();
             }

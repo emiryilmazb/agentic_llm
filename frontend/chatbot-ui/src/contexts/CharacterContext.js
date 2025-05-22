@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from "react";
 import axios from "axios";
 
 const CharacterContext = createContext(null);
@@ -12,42 +19,56 @@ export const CharacterProvider = ({ children }) => {
   const [selectedCharacter, setSelectedCharacter] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const fetchedRef = useRef(false);
 
-  // Uygulama başladığında karakterleri getir
-  useEffect(() => {
-    fetchCharacters();
-  }, []);
-
-  const fetchCharacters = async () => {
+  const fetchCharacters = useCallback(async () => {
     try {
+      console.log(
+        "fetchCharacters çağrıldı, selectedCharacter:",
+        selectedCharacter?.name
+      );
       setLoading(true);
       setError("");
 
       const response = await axios.get("/api/v1/characters/");
-      const charactersData = response.data;
+      const data = response.data;
 
-      // API'den gelen veri yapısını kontrol et ve her zaman bir dizi olarak ayarla
-      if (Array.isArray(charactersData)) {
-        setCharacters(charactersData);
-      } else if (charactersData && typeof charactersData === 'object') {
-        // Eğer API bir nesne döndürüyorsa ve içinde characters dizisi varsa
-        if (Array.isArray(charactersData.characters)) {
-          setCharacters(charactersData.characters);
-        } else {
-          // Nesneyi bir diziye dönüştür veya boş dizi kullan
-          const characterArray = Object.values(charactersData).filter(item =>
-            item && typeof item === 'object' && 'name' in item
-          );
-          setCharacters(characterArray.length > 0 ? characterArray : []);
+      console.log("API yanıtı:", data);
+
+      // API yanıt yapısına göre karakterleri ayarla
+      if (data && Array.isArray(data.characters)) {
+        console.log("Karakterler ayarlanıyor:", data.characters);
+
+        // Geçerli karakter nesnelerini filtrele
+        const validCharacters = data.characters.filter(
+          (char) => char && typeof char === "object"
+        );
+        console.log("Geçerli karakterler:", validCharacters);
+        setCharacters(validCharacters);
+
+        // Eğer henüz bir karakter seçilmemişse ve karakter listesi boş değilse, ilkini seç
+        if (!selectedCharacter && validCharacters.length > 0) {
+          setSelectedCharacter(validCharacters[0]);
+        }
+      } else if (data && Array.isArray(data)) {
+        // Eğer data doğrudan bir dizi ise
+        console.log("Karakterler doğrudan dizi olarak ayarlanıyor:", data);
+
+        // Geçerli karakter nesnelerini filtrele
+        const validCharacters = data.filter(
+          (char) => char && typeof char === "object"
+        );
+        console.log("Geçerli karakterler:", validCharacters);
+        setCharacters(validCharacters);
+
+        // Eğer henüz bir karakter seçilmemişse ve karakter listesi boş değilse, ilkini seç
+        if (!selectedCharacter && validCharacters.length > 0) {
+          setSelectedCharacter(validCharacters[0]);
         }
       } else {
+        console.log("API yanıtı beklenen formatta değil:", data);
         // Hiçbir şey bulunamazsa boş dizi kullan
         setCharacters([]);
-      }
-
-      // Eğer henüz bir karakter seçilmemişse, ilkini seç
-      if (!selectedCharacter && charactersData.length > 0) {
-        setSelectedCharacter(charactersData[0]);
       }
     } catch (err) {
       console.error("Karakterler getirilirken hata oluştu:", err);
@@ -55,13 +76,34 @@ export const CharacterProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []); // selectedCharacter bağımlılığını kaldırdık
+
+  // Uygulama başladığında karakterleri getir
+  useEffect(() => {
+    // Sadece bir kez çağrılmasını sağla (Strict Mode'da bile)
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      fetchCharacters();
+    }
+  }, []); // Boş bağımlılık dizisi, sadece bileşen ilk render edildiğinde çalışır
 
   const createCharacter = async (characterData) => {
     try {
       setError("");
 
-      const response = await axios.post("/api/v1/characters/", characterData);
+      // API'nin beklediği formata dönüştür
+      const apiCharacterData = {
+        name: characterData.name,
+        personality: characterData.personality,
+        background: characterData.description,
+        use_wiki: true, // Varsayılan olarak Wikipedia'dan bilgi alınsın
+        use_agentic: true, // Varsayılan olarak agentic özellikler etkinleştirilsin
+      };
+
+      const response = await axios.post(
+        "/api/v1/characters/",
+        apiCharacterData
+      );
       const newCharacter = response.data;
 
       setCharacters((prev) => [...prev, newCharacter]);
@@ -77,7 +119,9 @@ export const CharacterProvider = ({ children }) => {
     try {
       setError("");
 
-      const response = await axios.get(`/api/v1/characters/${name}`);
+      const response = await axios.get(
+        `/api/v1/characters/${encodeURIComponent(name)}`
+      );
       const character = response.data;
 
       return character;
@@ -92,7 +136,7 @@ export const CharacterProvider = ({ children }) => {
     try {
       setError("");
 
-      await axios.delete(`/api/v1/characters/${name}`);
+      await axios.delete(`/api/v1/characters/${encodeURIComponent(name)}`);
 
       // Karakter listesinden silinen karakteri kaldır
       setCharacters((prev) => prev.filter((char) => char.name !== name));
