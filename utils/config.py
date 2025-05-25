@@ -11,7 +11,8 @@ load_dotenv()
 
 # Base paths
 BASE_DIR = Path(__file__).parent.parent
-DATA_DIR = BASE_DIR / "character_data"
+# SQLite veritabanı yolu
+DB_PATH = BASE_DIR / "agentic_llm.db"
 
 # API Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -30,7 +31,10 @@ DEFAULT_WIKI_RESULTS = 5
 # Chat History Configuration
 MAX_HISTORY_MESSAGES = 10
 
+# Session Configuration
+DEFAULT_SESSION_TIMEOUT = 60 * 60 * 24  # 24 saat (saniye cinsinden)
+
 # Application settings
-APPLICATION_TITLE = "Agentic Character.ai Clone"
+APPLICATION_TITLE = "Agentic LLM"
 APPLICATION_ICON = "🤖"
-APPLICATION_DESCRIPTION = "Chat with your favorite characters or create your own character that can perform actions!"
+APPLICATION_DESCRIPTION = "Yapay zeka ile sohbet edin ve araçları kullanarak işlemler gerçekleştirin!"

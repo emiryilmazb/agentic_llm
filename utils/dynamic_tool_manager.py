@@ -52,55 +52,81 @@ class DynamicToolManager:
         existing_tools = get_default_server().get_tools_info()
         existing_tool_names = [tool["name"] for tool in existing_tools]
         
-        # Create a prompt to ask the LLM if a new tool is needed
-        prompt = f"""
-        You are an AI assistant that can determine if a user's request requires a new tool to be created.
+        # Create a question for the thinking model to analyze if a new tool is needed
+        question = f"""
+        Analiz et: Kullanıcının aşağıdaki mesajı yeni bir tool oluşturmayı gerektiriyor mu?
         
-        User message: "{user_message}"
-        
-        Existing tools:
+        Yeni bir tool SADECE şu durumlarda gereklidir:
+        1. İstek, harici veri veya API erişimi gerektiriyorsa
+        2. Mevcut araçların hiçbiri bu işlevi gerçekleştiremiyorsa
+        3. Bu, sık istenen ve tekrar kullanılabilecek bir işlevse
+        4. İşlev basit bir konuşmayla halledilemiyorsa
+
+        Kullanıcı mesajı: "{user_message}"
+
+        Mevcut araçlar:
         {json.dumps(existing_tools, indent=2)}
-        
-        Analyze the user's message and determine if it requires a tool that doesn't exist yet.
-        If a new tool is needed, provide the following information in JSON format:
-        {{
-            "new_tool_needed": true,
-            "tool_name": "name_of_tool",
-            "tool_description": "description of what the tool does",
-            "tool_parameters": [
-                {{"name": "param1", "type": "string", "description": "description of param1", "required": true}},
-                {{"name": "param2", "type": "number", "description": "description of param2", "required": false}}
-            ],
-            "implementation_details": "Specific instructions on how to implement this tool, including any public APIs (e.g., 'https://api.ipify.org?format=json' for IP, 'http://ip-api.com/json/YOUR_IP_ADDRESS' for IP-based geolocation, 'https://open.er-api.com/v6/latest/USD' for currency) or libraries to use. The implementation MUST be fully functional and not use placeholder data or logic."
-        }}
-        
-        If no new tool is needed, respond with:
+
+        Önce, mevcut herhangi bir aracın bu ihtiyacı karşılayıp karşılayamayacağını dikkatlice analiz et.
+        Eğer mevcut bir araç kullanılabilirse, yanıtın şu formatta olmalı:
         {{
             "new_tool_needed": false,
-            "reason": "explanation of why no new tool is needed"
+            "reason": "Mevcut araç kullanılabilir: [araç adı]"
         }}
-        
-        Only respond with the JSON object, nothing else.
+
+        Eğer kesinlikle yeni bir araç gerekiyorsa, yanıtın şu formatta olmalı:
+        {{
+            "new_tool_needed": true,
+            "tool_name": "önerilen_araç_adı",
+            "tool_description": "Aracın ne yaptığının açıklaması",
+            "tool_parameters": [
+                {{"name": "parametre1", "type": "string/number/boolean", "description": "Parametre açıklaması", "required": true/false}},
+                ...
+            ],
+            "implementation_details": "Aracın nasıl uygulanacağına dair detaylar"
+        }}
         """
-        
+
         try:
-            response = AIService.generate_response(
-                prompt=prompt,
+            # Thinking modeli ile analiz yap
+            thinking_result = AIService.generate_thinking_response(
+                question=question,
                 model_name=DEFAULT_MODEL,
                 temperature=0.2,  # Lower temperature for more deterministic results
-                max_tokens=DEFAULT_MAX_TOKENS,
+                max_tokens=DEFAULT_MAX_TOKENS * 2,
                 top_p=DEFAULT_TOP_P
             )
+            
+            # Düşünce sürecini logla
+            print(f"Tool ihtiyacı analiz düşünce süreci:\n{thinking_result['thinking']}")
+            
+            # Yanıtı al
+            response = thinking_result['answer']
             
             # Extract JSON from response
             json_match = re.search(r'({.*})', response, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1)
-                result = json.loads(json_str)
-                
-                # If a new tool is needed and it doesn't already exist
-                if result.get("new_tool_needed", False) and result.get("tool_name") not in existing_tool_names:
-                    return result
+                try:
+                    result = json.loads(json_str)
+                    
+                    # If a new tool is needed
+                    if result.get("new_tool_needed", False):
+                        tool_name = result.get("tool_name")
+                        print(f"AI detected need for new tool: {tool_name}")
+                                                
+                        # Eğer tool zaten varsa, yine de oluştur ama farklı bir isimle
+                        if tool_name in existing_tool_names:
+                            print(f"Tool '{tool_name}' already exists, but will be recreated")
+                            # Var olan tool'u kaldır
+                            from mcp_server import get_default_server
+                            server = get_default_server()
+                            server.unregister_tool(tool_name)
+                            
+                        return result
+                except json.JSONDecodeError as e:
+                    print(f"Error parsing JSON from AI response: {str(e)}")
+                    print(f"Response was: {response}")
                 
             return None
         except Exception as e:
@@ -152,6 +178,8 @@ class DynamicToolManager:
                     name="{tool_name}", # Use the provided tool_name
                     description="{tool_description}" # Use the provided tool_description
                 )
+                # Store parameters as a class attribute if needed
+                self.parameters = {json.dumps(tool_parameters, indent=2)}
             
             def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
                 # Parameter validation based on tool_parameters
@@ -172,6 +200,7 @@ class DynamicToolManager:
         8. For IP-based geolocation, if no specific API is given, you can use `http://ip-api.com/json/` (for the server's IP) or guide the user if client IP is needed.
         9. Include proper error handling for API calls (e.g., network errors, invalid responses) and parameter validation.
         10. Ensure the `execute` method returns a dictionary.
+        11. CRITICAL: DO NOT pass 'parameters' as an argument to super().__init__(). The MCPTool.__init__() method only accepts 'name' and 'description' parameters. If you need to store parameters, do it as a separate class attribute after the super().__init__() call.
         
         Only provide the Python code, nothing else. Do not include markdown formatting or explanations.
         """
@@ -480,14 +509,16 @@ class {class_name}(MCPTool):
             print(f"Error: Missing dependency '{missing_module}'. Regenerating tool without this dependency...")
             
             # Regenerate the tool code without the problematic dependency
-            updated_tool_info = tool_info.copy()
-            updated_tool_info["implementation_details"] = (
-                f"{tool_info.get('implementation_details', '')} "
-                f"DO NOT use {missing_module} library. Only use standard library and requests."
-            )
+            # Burada tool_info değişkeni tanımlı değil, bu nedenle hata oluşabilir
+            # Geçici bir tool_info oluşturalım
+            temp_tool_info = {
+                "tool_name": tool_name,
+                "tool_description": f"Tool for {tool_name}",
+                "implementation_details": f"DO NOT use {missing_module} library. Only use standard library and requests."
+            }
             
             # Try again with updated constraints
-            new_tool_code = DynamicToolManager.generate_tool_code(updated_tool_info)
+            new_tool_code = DynamicToolManager.generate_tool_code(temp_tool_info)
             if new_tool_code:
                 return DynamicToolManager.save_and_load_tool(new_tool_code, tool_name)
             return None
@@ -506,202 +537,46 @@ class {class_name}(MCPTool):
         Returns:
             Tuple of (success, tool_name, tool_info)
         """
-        # First check if we already have a tool that can handle this request
-        # This is a more direct approach than relying solely on the AI to detect tool needs
+        # Get MCP server and existing tools
         mcp_server = get_default_server()
         existing_tools = mcp_server.get_tools_info()
         
-        # Check for deleted tools to avoid recreating them
-        deleted_tools = []
-        deleted_tools_path = Path(DYNAMIC_TOOLS_DIR / "deleted_tools.json")
-        if deleted_tools_path.exists():
-            try:
-                with open(deleted_tools_path, "r", encoding="utf-8") as f:
-                    deleted_tools = json.load(f)
-                print(f"Found deleted tools list: {deleted_tools}")
-            except json.JSONDecodeError:
-                print("Error reading deleted_tools.json, treating as empty")
-                deleted_tools = []
+        # Tool creation logic continues
         
-        # Check for currency conversion requests
-        if any(term in user_message.lower() for term in ["dolar", "euro", "tl", "lira", "kur", "döviz", "currency", "exchange"]):
-            # Check if this tool was deleted
-            if "currency_converter" in deleted_tools:
-                print("Currency converter tool was previously deleted. Creating a new version.")
-                # Force dynamic creation of a new tool with a different name
-                tool_info_override = {
-                    "new_tool_needed": True,
-                    "tool_name": f"currency_converter_{int(time.time())}",  # Add timestamp to make unique
-                    "tool_description": "Converts between different currencies using current exchange rates.",
-                    "tool_parameters": [
-                        {"name": "from_currency", "type": "string", "description": "Source currency code (e.g., USD, EUR)", "required": True},
-                        {"name": "to_currency", "type": "string", "description": "Target currency code (e.g., TRY, EUR)", "required": True},
-                        {"name": "amount", "type": "number", "description": "Amount to convert", "required": True}
-                    ],
-                    "implementation_details": "Use the Exchange Rates API (https://open.er-api.com/v6/latest/USD) to get current exchange rates."
-                }
-                tool_code = DynamicToolManager.generate_tool_code(tool_info_override)
-                if not tool_code: return False, None, None
-                tool = DynamicToolManager.save_and_load_tool(tool_code, tool_info_override["tool_name"])
-                if not tool: return False, None, None
-                mcp_server.register_tool(tool)
-                print(f"Successfully created and registered new currency tool: {tool.name}")
-                return True, tool.name, tool_info_override
-            elif not any(tool["name"] == "currency_converter" for tool in existing_tools):
-                print("Currency converter tool not found. Attempting to load or create.")
-                try: # Try to load pre-defined good version first
-                    from dynamic_tools.currency_converter_tool import CurrencyConverterTool
-                    tool = CurrencyConverterTool()
-                    mcp_server.register_tool(tool)
-                    print(f"Successfully loaded pre-defined currency_converter_tool: {tool.name}")
-                    return True, tool.name, {"tool_name": tool.name, "description": tool.description, "predefined": True}
-                except ImportError:
-                    print("Pre-defined currency_converter_tool not found. Proceeding with dynamic creation.")
-            else:
-                print("Using existing currency_converter tool.")
-                return True, "currency_converter", {"tool_name": "currency_converter", "description": "Converts currencies", "predefined": True}
-
-        # Check for weather forecast requests
-        elif any(term in user_message.lower() for term in ["hava", "weather", "forecast", "sıcaklık", "temperature"]):
-            # Check if this tool was deleted
-            if "weather_forecast" in deleted_tools:
-                print("Weather forecast tool was previously deleted. Creating a new version.")
-                # Force dynamic creation of a new tool with a different name
-                tool_info_override = {
-                    "new_tool_needed": True,
-                    "tool_name": f"weather_forecast_{int(time.time())}",  # Add timestamp to make unique
-                    "tool_description": "Gets weather forecast for a specified location.",
-                    "tool_parameters": [
-                        {"name": "location", "type": "string", "description": "Location for the weather forecast", "required": True},
-                        {"name": "days", "type": "number", "description": "Number of days for the forecast", "required": False}
-                    ],
-                    "implementation_details": "Use the Open-Meteo API (https://api.open-meteo.com/v1/forecast) to get weather forecasts."
-                }
-                tool_code = DynamicToolManager.generate_tool_code(tool_info_override)
-                if not tool_code: return False, None, None
-                tool = DynamicToolManager.save_and_load_tool(tool_code, tool_info_override["tool_name"])
-                if not tool: return False, None, None
-                mcp_server.register_tool(tool)
-                print(f"Successfully created and registered new weather tool: {tool.name}")
-                return True, tool.name, tool_info_override
-            elif not any(tool["name"] == "weather_forecast" for tool in existing_tools):
-                print("Weather forecast tool not found. Attempting to load or create.")
-                try: # Try to load pre-defined good version first
-                    from dynamic_tools.weather_forecast_tool import WeatherForecastTool
-                    tool = WeatherForecastTool()
-                    mcp_server.register_tool(tool)
-                    print(f"Successfully loaded pre-defined weather_forecast_tool: {tool.name}")
-                    return True, tool.name, {"tool_name": tool.name, "description": tool.description, "predefined": True}
-                except ImportError:
-                    print("Pre-defined weather_forecast_tool not found. Proceeding with dynamic creation.")
-            else:
-                print("Using existing weather_forecast tool.")
-                return True, "weather_forecast", {"tool_name": "weather_forecast", "description": "Gets weather forecasts", "predefined": True}
-        
-        # Check for location requests
-        elif any(term in user_message.lower() for term in ["konum", "location", "neredeyim", "where am i"]):
-             # Check if this tool was deleted
-             if "get_current_location" in deleted_tools:
-                print("Location tool was previously deleted. Creating a new version.")
-                # Force dynamic creation of a new tool with a different name
-                tool_info_override = {
-                    "new_tool_needed": True,
-                    "tool_name": f"get_current_location_{int(time.time())}",  # Add timestamp to make unique
-                    "tool_description": "Retrieves the user's approximate location based on their IP address.",
-                    "tool_parameters": [],
-                    "implementation_details": "Use a public IP geolocation API like 'http://ip-api.com/json/' to get city, region, country."
-                }
-                tool_code = DynamicToolManager.generate_tool_code(tool_info_override)
-                if not tool_code: return False, None, None
-                tool = DynamicToolManager.save_and_load_tool(tool_code, tool_info_override["tool_name"])
-                if not tool: return False, None, None
-                mcp_server.register_tool(tool)
-                print(f"Successfully created and registered new location tool: {tool.name}")
-                return True, tool.name, tool_info_override
-             elif not any(tool["name"] == "get_current_location" for tool in existing_tools):
-                print("Location tool not found. Proceeding with dynamic creation guided for IP-based location.")
-                # Guide AI to create an IP-based location tool
-                tool_info_override = {
-                    "new_tool_needed": True,
-                    "tool_name": "get_current_location",
-                    "tool_description": "Retrieves the user's approximate location based on their IP address.",
-                    "tool_parameters": [],
-                    "implementation_details": "Use a public IP geolocation API like 'http://ip-api.com/json/' to get city, region, country. This will be the server's IP if run server-side. The implementation MUST be functional and not use placeholders."
-                }
-                # Skip AI detection and use this override
-                tool_code = DynamicToolManager.generate_tool_code(tool_info_override)
-                if not tool_code: return False, None, None
-                tool = DynamicToolManager.save_and_load_tool(tool_code, tool_info_override["tool_name"])
-                if not tool: return False, None, None
-                mcp_server.register_tool(tool)
-                print(f"Successfully created and registered new IP-based location tool: {tool.name}")
-                return True, tool.name, tool_info_override
-             else:
-                print("Using existing get_current_location tool.")
-                return True, "get_current_location", {"tool_name": "get_current_location", "description": "Gets location", "predefined": True}
-
-
-        # If no specific keyword match, then detect if a new tool is needed using AI
+        # Detect if a new tool is needed using AI
+        print(f"Analyzing user message with AI to detect tool need: '{user_message}'")
         tool_info = DynamicToolManager.detect_tool_need(user_message)
         
+        # AI'nın yanıtını kontrol et
         if not tool_info:
-            # If AI didn't detect a need but we have keywords, create a basic tool
-            # If AI didn't detect a need but we have keywords, this part is now less likely to be hit
-            # due to earlier specific checks. But keeping it as a fallback.
-            if not tool_info and (any(term in user_message.lower() for term in ["dolar", "tl", "kur", "currency"]) or \
-                                  any(term in user_message.lower() for term in ["hava", "weather"])):
-                # This fallback logic might need refinement or removal if the above specific checks are robust enough.
-                print("AI did not detect tool need, but keywords suggest one. This path needs review.")
-                return False, None, None # Or attempt to create a default tool based on keywords
+            print("AI did not detect a need for a new tool.")
+            return False, None, None
         
-        if not tool_info or not tool_info.get("new_tool_needed"):
-             return False, None, None
+        if not tool_info.get("new_tool_needed"):
+            print(f"AI determined no new tool is needed: {tool_info.get('reason', 'No reason provided')}")
+            return False, None, None
+            
+        print(f"AI determined a new tool is needed: {tool_info.get('tool_name')}")
+        print(f"Tool description: {tool_info.get('tool_description')}")
              
-        # Check if the tool was previously deleted
+        # Get tool name
         tool_name = tool_info.get("tool_name", "")
-        if tool_name in deleted_tools:
-            print(f"Tool '{tool_name}' was previously deleted. Creating a new version with a unique name.")
-            tool_info["tool_name"] = f"{tool_name}_{int(time.time())}"  # Add timestamp to make unique
 
         # Generate code for the new tool
+        print(f"Generating code for the new tool: {tool_info.get('tool_name')}")
         tool_code = DynamicToolManager.generate_tool_code(tool_info)
         
         if not tool_code:
+            print("Failed to generate tool code.")
             return False, None, None
         
         # Save and load the tool
+        print(f"Saving and loading the tool: {tool_info.get('tool_name')}")
         tool = DynamicToolManager.save_and_load_tool(tool_code, tool_info["tool_name"])
         
-        # If tool creation failed, try to use a pre-built example tool
         if not tool:
-            tool_name = tool_info.get("tool_name", "").lower()
-            # Check if the base name (without timestamp) is in deleted_tools
-            base_name = tool_name.split('_')[0] if '_' in tool_name else tool_name
-            
-            if "currency" in tool_name or "exchange" in tool_name:
-                if base_name not in deleted_tools:
-                    try:
-                        # Try to use the example currency converter tool
-                        from dynamic_tools.currency_converter_tool import CurrencyConverterTool
-                        tool = CurrencyConverterTool()
-                    except ImportError:
-                        return False, None, None
-                else:
-                    print(f"Not using pre-built tool because '{base_name}' was deleted")
-                    return False, None, None
-            elif "weather" in tool_name or "forecast" in tool_name:
-                if base_name not in deleted_tools:
-                    try:
-                        # Try to use the example weather forecast tool
-                        from dynamic_tools.weather_forecast_tool import WeatherForecastTool
-                        tool = WeatherForecastTool()
-                    except ImportError:
-                        return False, None, None
-                else:
-                    print(f"Not using pre-built tool because '{base_name}' was deleted")
-                    return False, None, None
-            else:
-                return False, None, None
+            print("Failed to save and load the tool.")
+            return False, None, None
         
         # Register the tool with the MCP server
         mcp_server.register_tool(tool)
@@ -709,3 +584,370 @@ class {class_name}(MCPTool):
         print(f"Successfully created and registered new tool: {tool.name}")
         
         return True, tool.name, tool_info
+    
+    @staticmethod
+    def debug_and_fix_tool(tool_name: str, error_message: str, args: Dict[str, Any]) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+        """
+        Hata veren bir tool'u otomatik olarak debug edip düzeltmeye çalışır.
+        
+        Args:
+            tool_name: Hata veren tool'un adı
+            error_message: Hata mesajı
+            args: Tool'a geçilen argümanlar
+            
+        Returns:
+            Tuple of (success, tool_name, tool_info)
+        """
+        print(f"Tool otomatik debug başlatılıyor: {tool_name}")
+        print(f"Hata mesajı: {error_message}")
+        print(f"Argümanlar: {args}")
+        
+        try:
+            # MCP sunucusundan tool'u al
+            mcp_server = get_default_server()
+            
+            # Tool dosyasını bul
+            tool_filename = ''.join(['_' + c.lower() if c.isupper() else c for c in tool_name]).lstrip('_')
+            if not tool_filename.endswith('_tool'):
+                tool_filename += '_tool'
+            
+            tool_path = DYNAMIC_TOOLS_DIR / f"{tool_filename}.py"
+            
+            # Tool dosyasının içeriğini oku
+            if not tool_path.exists():
+                print(f"Tool dosyası bulunamadı: {tool_path}")
+                return False, None, None
+            
+            with open(tool_path, 'r') as f:
+                tool_code = f.read()
+            
+            # Hata türünü analiz et ve uygun çözümü uygula
+            fixed_code = None
+            
+            # 1. "unexpected keyword argument" hatası
+            if "unexpected keyword argument" in error_message:
+                param_match = re.search(r"unexpected keyword argument '(\w+)'", error_message)
+                if param_match:
+                    problematic_param = param_match.group(1)
+                    print(f"Tespit edilen sorunlu parametre: '{problematic_param}'")
+                    
+                    # __init__ metodunu bul ve düzelt
+                    init_pattern = r"def __init__\(self\):\s+super\(\)\.__init__\("
+                    init_match = re.search(init_pattern, tool_code)
+                    
+                    if init_match:
+                        # super().__init__() çağrısını bul
+                        super_init_pattern = r"super\(\)\.__init__\(([\s\S]*?)\)"
+                        super_init_match = re.search(super_init_pattern, tool_code)
+                        
+                        if super_init_match:
+                            init_args = super_init_match.group(1)
+                            
+                            # Sorunlu parametreyi bul
+                            param_pattern = rf"{problematic_param}=(?:\[[\s\S]*?\]|{{[\s\S]*?}}|\".*?\"|'.*?'|[^,)]+)"
+                            param_match = re.search(param_pattern, init_args)
+                            
+                            if param_match:
+                                param_value = param_match.group(0)
+                                
+                                # Sorunlu parametreyi çıkar
+                                new_init_args = re.sub(rf",\s*{param_pattern}", "", init_args)
+                                new_init_args = re.sub(rf"{param_pattern},\s*", "", new_init_args)
+                                
+                                # Yeni super().__init__() çağrısı
+                                new_super_init = f"super().__init__({new_init_args})"
+                                
+                                # Parametreyi self.parameters olarak ekle
+                                param_value_only = param_value.split("=", 1)[1]
+                                param_assignment = f"        self.{problematic_param} = {param_value_only}"
+                                
+                                # Kodu güncelle
+                                updated_code = tool_code.replace(super_init_match.group(0), new_super_init)
+                                
+                                # self.parameters atamasını ekle
+                                init_end_pattern = r"super\(\)\.__init__\([\s\S]*?\)([\s\S]*?)def"
+                                init_end_match = re.search(init_end_pattern, updated_code)
+                                
+                                if init_end_match:
+                                    init_end = init_end_match.group(1)
+                                    new_init_end = f"\n{param_assignment}{init_end}"
+                                    updated_code = updated_code.replace(init_end, new_init_end)
+                                
+                                fixed_code = updated_code
+                                print(f"'unexpected keyword argument' hatası düzeltildi")
+            
+            # 2. "missing required argument" hatası
+            elif "missing required argument" in error_message or "required positional argument" in error_message:
+                param_match = re.search(r"missing required (?:positional )?argument '(\w+)'", error_message)
+                if param_match:
+                    missing_param = param_match.group(1)
+                    print(f"Tespit edilen eksik parametre: '{missing_param}'")
+                    
+                    # execute metodunu bul
+                    execute_pattern = r"def execute\(self, args: Dict\[str, Any\]\)[\s\S]*?:"
+                    execute_match = re.search(execute_pattern, tool_code)
+                    
+                    if execute_match:
+                        # Parametreyi kontrol et ve varsayılan değer ekle
+                        param_check_pattern = rf"{missing_param}\s*=\s*args\.get\(['\"]?{missing_param}['\"]?(?:,\s*[^)]+)?\)"
+                        param_check_match = re.search(param_check_pattern, tool_code)
+                        
+                        if param_check_match:
+                            # Zaten bir args.get kullanımı var, varsayılan değer ekle
+                            old_param_check = param_check_match.group(0)
+                            if "," not in old_param_check:
+                                # Varsayılan değer yok, ekle
+                                new_param_check = old_param_check.replace(")", ", None)")
+                                fixed_code = tool_code.replace(old_param_check, new_param_check)
+                                print(f"Eksik parametre için varsayılan değer eklendi: {missing_param}")
+                        else:
+                            # Parametre kontrolü yok, ekle
+                            execute_body_start = execute_match.end()
+                            param_assignment = f"\n        {missing_param} = args.get('{missing_param}', None)"
+                            fixed_code = tool_code[:execute_body_start] + param_assignment + tool_code[execute_body_start:]
+                            print(f"Eksik parametre için kontrol eklendi: {missing_param}")
+            
+            # 3. "module not found" hatası (ImportError)
+            elif "No module named" in error_message:
+                module_match = re.search(r"No module named '([^']+)'", error_message)
+                if module_match:
+                    missing_module = module_match.group(1)
+                    print(f"Tespit edilen eksik modül: '{missing_module}'")
+                    
+                    # Import ifadesini bul
+                    import_pattern = rf"import\s+{missing_module}|from\s+{missing_module}\s+import"
+                    import_match = re.search(import_pattern, tool_code)
+                    
+                    if import_match:
+                        # Problematik import ifadesini kaldır
+                        import_line = tool_code.splitlines()[import_match.start():import_match.end()].pop(0)
+                        fixed_code = tool_code.replace(import_line, f"# {import_line} # Removed due to missing module")
+                        
+                        # Alternatif çözüm ekle
+                        if missing_module == "googletrans":
+                            # googletrans yerine requests kullan
+                            fixed_code = fixed_code.replace("# import requests", "import requests")
+                            print(f"Eksik modül '{missing_module}' için alternatif çözüm eklendi")
+                        elif missing_module == "forex_python":
+                            # forex_python yerine requests kullan
+                            fixed_code = fixed_code.replace("# import requests", "import requests")
+                            print(f"Eksik modül '{missing_module}' için alternatif çözüm eklendi")
+            
+            # 4. "attribute error" hatası (AttributeError)
+            elif "has no attribute" in error_message:
+                attr_match = re.search(r"'[^']+' object has no attribute '([^']+)'", error_message)
+                if attr_match:
+                    missing_attr = attr_match.group(1)
+                    print(f"Tespit edilen eksik özellik: '{missing_attr}'")
+                    
+                    # Özelliği kullanan kodu bul
+                    attr_pattern = rf"\.{missing_attr}\b"
+                    attr_matches = list(re.finditer(attr_pattern, tool_code))
+                    
+                    if attr_matches:
+                        # İlk eşleşmeyi düzelt
+                        match = attr_matches[0]
+                        line_start = tool_code.rfind('\n', 0, match.start()) + 1
+                        line_end = tool_code.find('\n', match.end())
+                        if line_end == -1:
+                            line_end = len(tool_code)
+                        
+                        problematic_line = tool_code[line_start:line_end]
+                        fixed_line = f"# {problematic_line} # AttributeError\n        # Düzeltilmiş kod:"
+                        
+                        # Alternatif çözüm ekle
+                        if missing_attr == "json":
+                            fixed_line += "\n        import json\n        data = json.loads(response.text)"
+                        elif missing_attr == "text":
+                            fixed_line += "\n        data = response.content.decode('utf-8')"
+                        else:
+                            fixed_line += f"\n        # '{missing_attr}' özelliği bulunamadı, alternatif bir çözüm kullanın"
+                        
+                        fixed_code = tool_code.replace(problematic_line, fixed_line)
+                        print(f"AttributeError için düzeltme eklendi: {missing_attr}")
+            
+            # 5. "type error" hatası (TypeError)
+            elif "TypeError" in error_message:
+                # Tip hatası için genel bir düzeltme
+                type_match = re.search(r"TypeError: (.+)", error_message)
+                if type_match:
+                    type_error = type_match.group(1)
+                    print(f"Tespit edilen tip hatası: '{type_error}'")
+                    
+                    if "not callable" in type_error:
+                        # Çağrılabilir olmayan bir nesneyi çağırma hatası
+                        callable_match = re.search(r"'([^']+)' object is not callable", type_error)
+                        if callable_match:
+                            obj_name = callable_match.group(1)
+                            # Nesneyi çağıran kodu bul
+                            call_pattern = rf"{obj_name}\s*\("
+                            call_matches = list(re.finditer(call_pattern, tool_code))
+                            
+                            if call_matches:
+                                # İlk eşleşmeyi düzelt
+                                match = call_matches[0]
+                                line_start = tool_code.rfind('\n', 0, match.start()) + 1
+                                line_end = tool_code.find('\n', match.end())
+                                if line_end == -1:
+                                    line_end = len(tool_code)
+                                
+                                problematic_line = tool_code[line_start:line_end]
+                                fixed_line = f"# {problematic_line} # TypeError: not callable\n        # Düzeltilmiş kod:"
+                                
+                                if obj_name == "json":
+                                    fixed_line += "\n        import json\n        data = json.loads(response.text)"
+                                else:
+                                    fixed_line += f"\n        # '{obj_name}' çağrılabilir değil, alternatif bir çözüm kullanın"
+                                
+                                fixed_code = tool_code.replace(problematic_line, fixed_line)
+                                print(f"TypeError (not callable) için düzeltme eklendi: {obj_name}")
+            
+            # 6. "value error" hatası (ValueError)
+            elif "ValueError" in error_message:
+                # Değer hatası için genel bir düzeltme
+                value_match = re.search(r"ValueError: (.+)", error_message)
+                if value_match:
+                    value_error = value_match.group(1)
+                    print(f"Tespit edilen değer hatası: '{value_error}'")
+                    
+                    if "JSON" in value_error or "json" in value_error:
+                        # JSON ayrıştırma hatası
+                        # JSON işleme kodunu bul
+                        json_pattern = r"json\.loads\(([^)]+)\)"
+                        json_matches = list(re.finditer(json_pattern, tool_code))
+                        
+                        if json_matches:
+                            # İlk eşleşmeyi düzelt
+                            match = json_matches[0]
+                            line_start = tool_code.rfind('\n', 0, match.start()) + 1
+                            line_end = tool_code.find('\n', match.end())
+                            if line_end == -1:
+                                line_end = len(tool_code)
+                            
+                            problematic_line = tool_code[line_start:line_end]
+                            fixed_line = f"# {problematic_line} # ValueError: JSON\n        # Düzeltilmiş kod:"
+                            fixed_line += "\n        try:\n            data = json.loads(response.text)\n        except ValueError:\n            data = {}"
+                            
+                            fixed_code = tool_code.replace(problematic_line, fixed_line)
+                            print(f"ValueError (JSON) için düzeltme eklendi")
+            
+            # 7. "key error" hatası (KeyError)
+            elif "KeyError" in error_message:
+                # Anahtar hatası için genel bir düzeltme
+                key_match = re.search(r"KeyError: ['\"]?([^'\"]+)['\"]?", error_message)
+                if key_match:
+                    missing_key = key_match.group(1)
+                    print(f"Tespit edilen eksik anahtar: '{missing_key}'")
+                    
+                    # Anahtarı kullanan kodu bul
+                    key_pattern = rf"\[['\"]?{missing_key}['\"]?\]"
+                    key_matches = list(re.finditer(key_pattern, tool_code))
+                    
+                    if key_matches:
+                        # İlk eşleşmeyi düzelt
+                        match = key_matches[0]
+                        line_start = tool_code.rfind('\n', 0, match.start()) + 1
+                        line_end = tool_code.find('\n', match.end())
+                        if line_end == -1:
+                            line_end = len(tool_code)
+                        
+                        problematic_line = tool_code[line_start:line_end]
+                        fixed_line = f"# {problematic_line} # KeyError\n        # Düzeltilmiş kod:"
+                        
+                        # dict.get() kullanarak düzelt
+                        dict_name = problematic_line.split('[')[0].strip()
+                        fixed_line += f"\n        {missing_key}_value = {dict_name}.get('{missing_key}')"
+                        
+                        fixed_code = tool_code.replace(problematic_line, fixed_line)
+                        print(f"KeyError için düzeltme eklendi: {missing_key}")
+            
+            # 8. API hatası (requests.exceptions.RequestException)
+            elif "RequestException" in error_message or "ConnectionError" in error_message or "HTTPError" in error_message:
+                # API hatası için genel bir düzeltme
+                print(f"API hatası tespit edildi")
+                
+                # requests.get veya requests.post çağrısını bul
+                request_pattern = r"requests\.(get|post)\(([^)]+)\)"
+                request_matches = list(re.finditer(request_pattern, tool_code))
+                
+                if request_matches:
+                    # İlk eşleşmeyi düzelt
+                    match = request_matches[0]
+                    line_start = tool_code.rfind('\n', 0, match.start()) + 1
+                    line_end = tool_code.find('\n', match.end())
+                    if line_end == -1:
+                        line_end = len(tool_code)
+                    
+                    problematic_line = tool_code[line_start:line_end]
+                    fixed_line = f"# {problematic_line} # RequestException\n        # Düzeltilmiş kod:"
+                    fixed_line += "\n        try:\n            " + problematic_line + "\n        except requests.exceptions.RequestException as e:\n            return {\"error\": f\"API request failed: {str(e)}\"}"
+                    
+                    fixed_code = tool_code.replace(problematic_line, fixed_line)
+                    print(f"API hatası için düzeltme eklendi")
+            
+            # Özel çözüm bulunamadıysa, AI ile düzeltme dene
+            if not fixed_code:
+                print(f"Özel bir çözüm bulunamadı, AI ile düzeltme deneniyor...")
+                
+                # AI'ya hata mesajını ve kodu gönder
+                prompt = f"""
+                Aşağıdaki Python kodunda bir hata var. Hatayı düzelt.
+                
+                Hata mesajı: {error_message}
+                
+                Kod:
+                ```python
+                {tool_code}
+                ```
+                
+                Lütfen hatayı düzelt ve düzeltilmiş kodu döndür. Sadece kodu döndür, açıklama yapma.
+                """
+                
+                # AI'dan düzeltilmiş kodu al
+                fixed_code = AIService.generate_response(
+                    prompt=prompt,
+                    model_name=DEFAULT_MODEL,
+                    temperature=0.2,
+                    max_tokens=DEFAULT_MAX_TOKENS * 2,
+                    top_p=DEFAULT_TOP_P
+                )
+                
+                # Markdown kod bloklarını temizle
+                fixed_code = re.sub(r'```python\s*', '', fixed_code)
+                fixed_code = re.sub(r'```\s*', '', fixed_code)
+                
+                print(f"Tool kodu AI ile düzeltildi")
+            
+            # Düzeltilmiş kodu kaydet
+            if fixed_code:
+                with open(tool_path, 'w') as f:
+                    f.write(fixed_code)
+                
+                print(f"Tool kodu güncellendi: {tool_path}")
+                
+                # Tool'u yeniden yükle
+                module_name = f"dynamic_tools.{tool_filename}"
+                if module_name in sys.modules:
+                    del sys.modules[module_name]
+                
+                # Tool'u yeniden oluştur
+                tool = DynamicToolManager.save_and_load_tool(fixed_code, tool_name)
+                
+                if tool:
+                    # MCP sunucusuna kaydet
+                    mcp_server.register_tool(tool)
+                    print(f"Tool başarıyla düzeltildi ve kaydedildi: {tool_name}")
+                    
+                    # Tool bilgilerini oluştur
+                    tool_info = {
+                        "new_tool_needed": True,
+                        "tool_name": tool_name,
+                        "tool_description": tool.description
+                    }
+                    
+                    return True, tool.name, tool_info
+            
+            return False, None, None
+        except Exception as e:
+            print(f"Tool debug ve düzeltme sırasında hata: {str(e)}")
+            return False, None, None

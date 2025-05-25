@@ -17,15 +17,8 @@ Bu proje, Character.ai benzeri bir karakter chatbot platformuna agentic yapı ve
 - **Dinamik Araç Oluşturma**: İhtiyaç duyulan araçları otomatik olarak oluşturma
 
 ### MCP (Model Context Protocol) Araçları
-#### Yerleşik Araçlar
-- **search_wikipedia**: Wikipedia'da bilgi arama
-- **get_current_time**: Güncel tarih/saat bilgisi alma
-- **get_weather**: Hava durumu bilgisi (demo)
-- **open_website**: Web sitesi açma
-- **calculate_math**: Matematiksel hesaplamalar yapma
 
 #### Dinamik Araçlar
-- **currency_converter**: Döviz kurları ve para birimi dönüşümleri (örnek)
 - *ve daha fazlası*: Sistem, kullanıcı ihtiyaçlarına göre yeni araçlar oluşturabilir
 
 ## Kurulum
